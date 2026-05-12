@@ -15,12 +15,13 @@ class AudioCtrl extends GetxController {
     await initializeSurahDownloadStatus();
     // تأكد من مزامنة حالة آيات السور مع الملفات الفعلية عند التشغيل/Hot reload
     // await _updateDownloadedAyahsMap();
-    // التحقق من عدم وجود مشغل صوت نشط آخر / Check if no other audio service is active
-    if (SurahState.isAudioServiceActive) {
-      log('Audio service already active, skipping initialization',
-          name: 'AudioCtrl');
-      return;
-    }
+    //
+    // The host app may have already called `AudioService.init()` with
+    // its own handler — in that case it sets `SurahState.isAudioServiceActive`
+    // to true BEFORE calling QuranLibrary.init(). We must still run the
+    // rest of this onInit (download mapping, playlist, ayah numbering);
+    // the duplicate AudioService.init() call lower down is gated
+    // separately so it's a no-op when the host owns the service.
     QuranCtrl.instance;
     if (!kIsWeb) {
       state._dir ??= await getApplicationDocumentsDirectory();
@@ -48,16 +49,21 @@ class AudioCtrl extends GetxController {
 
     // ابدأ كل جلسة باعتبار الخدمة غير مهيّأة، ولا تستخدم تخزينًا دائمًا
     state.audioServiceInitialized.value = false;
+    // Skip our own `AudioService.init()` when the host app already
+    // owns the singleton (sets `SurahState.isAudioServiceActive` true
+    // before QuranLibrary.init()). Cover-art cache + last-source
+    // restore still run.
+    final hostOwnsAudioService = SurahState.isAudioServiceActive;
     if (!kIsWeb && (Platform.isIOS || Platform.isAndroid || Platform.isMacOS)) {
       if (!state.audioServiceInitialized.value) {
         if (!QuranCtrl.instance.state.isQuranLoaded) {
           await QuranCtrl.instance.loadQuranDataV3().then((_) async {
-            await initAudioService();
+            if (!hostOwnsAudioService) await initAudioService();
             await setCachedArtUri();
             await lastAudioSource();
           });
         } else {
-          await initAudioService();
+          if (!hostOwnsAudioService) await initAudioService();
           await setCachedArtUri();
           await lastAudioSource();
         }
