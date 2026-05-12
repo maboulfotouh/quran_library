@@ -13,6 +13,19 @@ class QuranFontsService {
 
   static const int _totalPages = 604;
 
+  /// [iqama fork] Base URL for downloading the 604 per-page Tajweed
+  /// fonts. When set, [_decompressForPage] fetches `QCF4xxx_COLOR-
+  /// Regular.ttf.gz` from this URL instead of reading from the asset
+  /// bundle. Host apps that bundle the fonts can leave this null and
+  /// the original asset-bundle path is used.
+  ///
+  /// Set from the host app BEFORE calling [QuranLibrary.init]:
+  ///   QuranFontsService.remoteBaseUrl =
+  ///       'https://cdn.example.com/quran-fonts/qcf4';
+  ///
+  /// No trailing slash needed. The file name is appended internally.
+  static String? remoteBaseUrl;
+
   /// الصفحات المحمّلة في هذا التشغيل (1-based).
   static final Set<int> _loadedPages = {};
 
@@ -186,13 +199,13 @@ class QuranFontsService {
         Uint8List fontBytes;
         final familyName = 'page$page';
 
-        // جرّب قراءة الكاش أولاً
+        // جرّب قراءة الكاش أولاً (decompressed TTF)
         if (cacheDir != null) {
           final cachedFile = File('${cacheDir.path}/$familyName.ttf');
           if (cachedFile.existsSync()) {
             fontBytes = Uint8List.fromList(await cachedFile.readAsBytes());
           } else {
-            fontBytes = await _decompressFromAsset(page);
+            fontBytes = await _decompressForPage(page, cacheDir);
             try {
               await cachedFile.writeAsBytes(fontBytes, flush: true);
             } catch (e) {
@@ -201,7 +214,7 @@ class QuranFontsService {
             }
           }
         } else {
-          fontBytes = await _decompressFromAsset(page);
+          fontBytes = await _decompressForPage(page, cacheDir);
         }
 
         // 1. خط فاتح أصلي
@@ -250,6 +263,82 @@ class QuranFontsService {
         data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     final decompressed = const GZipDecoder().decodeBytes(gzBytes);
     return Uint8List.fromList(decompressed);
+  }
+
+  /// [iqama fork] Returns the decompressed TTF bytes for [page]. If
+  /// [remoteBaseUrl] is set, the `.gz` is fetched from the network
+  /// the first time and cached on disk; subsequent calls in the same
+  /// session use the in-memory decompression of the on-disk bytes.
+  /// Falls back to [_decompressFromAsset] when [remoteBaseUrl] is null
+  /// (e.g. a host app that bundles the fonts).
+  static Future<Uint8List> _decompressForPage(
+      int page, Directory? cacheDir) async {
+    if (remoteBaseUrl == null) {
+      return _decompressFromAsset(page);
+    }
+    final gzBytes = await _fetchPageGzip(page, cacheDir);
+    final decompressed = const GZipDecoder().decodeBytes(gzBytes);
+    return Uint8List.fromList(decompressed);
+  }
+
+  /// [iqama fork] Downloads `QCF4{padded}_COLOR-Regular.ttf.gz` from
+  /// [remoteBaseUrl] and stores it under `<cacheDir>/gz/` so a re-launch
+  /// doesn't re-download. Returns the raw .gz bytes — decompression is
+  /// handled by the caller.
+  static Future<Uint8List> _fetchPageGzip(
+      int page, Directory? cacheDir) async {
+    final padded = page.toString().padLeft(3, '0');
+    final fileName = 'QCF4${padded}_COLOR-Regular.ttf.gz';
+
+    // gz disk cache lives alongside the decompressed TTF cache; keep
+    // them in a sibling dir so cleanup is one rmdir.
+    File? gzCachedFile;
+    if (cacheDir != null) {
+      final gzDir = Directory('${cacheDir.path}/gz');
+      if (!gzDir.existsSync()) {
+        try {
+          await gzDir.create(recursive: true);
+        } catch (_) {/* fallthrough to memory-only */}
+      }
+      gzCachedFile = File('${gzDir.path}/$fileName');
+      if (gzCachedFile.existsSync()) {
+        try {
+          return Uint8List.fromList(await gzCachedFile.readAsBytes());
+        } catch (e) {
+          log('QuranFontsService: gz cache read failed for page $page: $e',
+              name: 'QuranFontsService');
+        }
+      }
+    }
+
+    final url = '${remoteBaseUrl!}/$fileName';
+    // Use a fresh Dio so the host app's Dio-wide interceptors (auth
+    // headers etc) don't accidentally apply to a public CDN fetch.
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 30),
+      responseType: ResponseType.bytes,
+    ));
+    try {
+      final resp = await dio.get<List<int>>(url);
+      if (resp.statusCode != 200 || resp.data == null) {
+        throw Exception('HTTP ${resp.statusCode} for $url');
+      }
+      final bytes = Uint8List.fromList(resp.data!);
+      // Cache the .gz for next launch. Best-effort: failure to cache
+      // does not break this session.
+      if (gzCachedFile != null) {
+        try {
+          await gzCachedFile.writeAsBytes(bytes, flush: true);
+        } catch (e) {
+          log('QuranFontsService: gz cache write failed for page $page: $e',
+              name: 'QuranFontsService');
+        }
+      }
+      return bytes;
+    } finally {
+      dio.close(force: false);
+    }
   }
 
   // ---------------------------------------------------------------------------

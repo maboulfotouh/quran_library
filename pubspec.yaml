@@ -79,7 +79,10 @@ flutter:
     - assets/images/
     - assets/saadi.json.gz
     - assets/en.json.gz
-    - assets/fonts/quran_fonts_qfc4/
+    # [iqama fork] Removed `assets/fonts/quran_fonts_qfc4/` (67 MB,
+    # 604 per-page Tajweed fonts). They're now downloaded on demand
+    # from the host app's CDN — see QuranFontsService._fetchPageGzip().
+    # Set QuranFontsService.remoteBaseUrl before QuranLibrary.init().
 
   fonts:
     - family: kufi
