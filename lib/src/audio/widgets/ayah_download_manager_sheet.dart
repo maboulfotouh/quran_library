@@ -174,22 +174,25 @@ class AyahDownloadManagerSheet extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  // [iqama fork] Show the plain
+                                  // Arabic name (الفاتحة) in Cairo
+                                  // instead of the calligraphic
+                                  // digit-glyph, which reads as a
+                                  // number to anyone not used to
+                                  // mushaf typography.
                                   Text(
-                                    s.surahNumber.toString(),
+                                    s.arabicName,
                                     style: effectiveStyle.surahTitleStyle ??
-                                        TextStyle(
-                                          color: AppColors.getTextColor(dark),
-                                          fontFamily: "surahName",
-                                          fontSize:
-                                              effectiveStyle.surahNameSize ??
-                                                  30,
-                                          height: 1.2,
-                                          fontFamilyFallback: const [
-                                            "surahName"
-                                          ],
-                                          inherit: false,
-                                          package: "quran_library",
-                                        ),
+                                        QuranLibrary().cairoStyle.copyWith(
+                                              color: AppColors.getTextColor(dark),
+                                              fontSize:
+                                                  effectiveStyle.surahNameSize ??
+                                                      20,
+                                              fontWeight: FontWeight.w700,
+                                              height: 1.2,
+                                            ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   DownloadedTextWidget(
                                     style: effectiveStyle,

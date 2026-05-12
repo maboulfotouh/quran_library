@@ -169,16 +169,23 @@ class _SearchTabState extends State<_SearchTab> {
                             borderRadius: BorderRadius.all(Radius.circular(
                                 (s.surahChipRadius ?? 8).toDouble())),
                           ),
+                          // [iqama fork] Show the plain Arabic surah
+                          // name (e.g. الفاتحة) in Cairo instead of the
+                          // calligraphic-font digit that looks like a
+                          // number to anyone not familiar with mushaf
+                          // typography. Host-provided
+                          // `surahChipTextStyle` still wins if set.
                           child: Text(
-                            search.surahNumber.toString(),
+                            search.arabicName,
                             style: s.surahChipTextStyle ??
-                                const TextStyle(
-                                  color: Colors.white,
-                                  fontFamily: 'surahName',
-                                  fontSize: 28,
-                                  package: 'quran_library',
-                                ),
+                                QuranLibrary().cairoStyle.copyWith(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                             textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
