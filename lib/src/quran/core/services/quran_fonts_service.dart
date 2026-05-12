@@ -26,6 +26,31 @@ class QuranFontsService {
   /// No trailing slash needed. The file name is appended internally.
   static String? remoteBaseUrl;
 
+  /// [iqama fork] Optional consent gate. When set, called exactly
+  /// once per isolate session before the very first network download
+  /// (cached files don't trigger it). If the future resolves false,
+  /// all subsequent download attempts in this session are aborted
+  /// early — useful for warning the user about the ~67 MB cost and
+  /// letting them decline.
+  ///
+  /// Set BEFORE calling [QuranLibrary.init]:
+  ///   QuranFontsService.beforeDownloadGate = () async {
+  ///     return await showMyConsentDialog();
+  ///   };
+  ///
+  /// Pure no-op when [remoteBaseUrl] is null (no downloads happen
+  /// from S3 anyway).
+  static Future<bool> Function()? beforeDownloadGate;
+
+  /// Single-flight gate evaluation. Multiple parallel page downloads
+  /// share the same Future so the dialog only shows once.
+  static Future<bool>? _gatePending;
+
+  /// True once the gate has answered "no". Short-circuits future
+  /// download attempts so we don't spam the user (or the network)
+  /// with retries this session.
+  static bool _downloadsAborted = false;
+
   /// الصفحات المحمّلة في هذا التشغيل (1-based).
   static final Set<int> _loadedPages = {};
 
@@ -311,6 +336,22 @@ class QuranFontsService {
       }
     }
 
+    // [iqama fork] Consent gate. Only runs when we're about to hit
+    // the network (cache hits above already returned). The gate is
+    // single-flighted across parallel page downloads so the host's
+    // dialog only shows once.
+    if (_downloadsAborted) {
+      throw _FontDownloadDeclinedException();
+    }
+    if (beforeDownloadGate != null) {
+      _gatePending ??= beforeDownloadGate!();
+      final ok = await _gatePending!;
+      if (!ok) {
+        _downloadsAborted = true;
+        throw _FontDownloadDeclinedException();
+      }
+    }
+
     final url = '${remoteBaseUrl!}/$fileName';
     // Use a fresh Dio so the host app's Dio-wide interceptors (auth
     // headers etc) don't accidentally apply to a public CDN fetch.
@@ -475,4 +516,11 @@ class QuranFontsService {
     _cacheDir = null;
     _cacheDirInitialized = false;
   }
+}
+
+/// [iqama fork] Sentinel thrown when the consent gate returns false.
+/// Caught by `_loadSinglePage`'s outer catch and logged silently.
+class _FontDownloadDeclinedException implements Exception {
+  @override
+  String toString() => 'Tajweed font download declined by user';
 }
