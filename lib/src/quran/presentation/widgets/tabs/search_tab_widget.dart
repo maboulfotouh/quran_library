@@ -49,25 +49,29 @@ class _SearchTabState extends State<_SearchTab> {
         SearchTabStyle.defaults(isDark: widget.isDark, context: context);
     final Color textColor =
         s.textColor ?? AppColors.getTextColor(widget.isDark);
-    final Color accentColor =
+    // Iqama palette wins inside this surface — accentColor is left
+    // as an explicit no-op so future overrides via [style] can be
+    // re-attached without changing the structure here.
+    // ignore: unused_local_variable
+    final accentColor =
         s.accentColor ?? Theme.of(context).colorScheme.primary;
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
         child: Column(
           mainAxisSize: MainAxisSize.max,
           children: [
-            // Search TextField (خارج GetBuilder لتثبيت التركيز)
+            // [iqama fork] Iqama-style search field — white surface,
+            // divider hairline unfocused, teal hairline on focus.
+            // Leading search icon, hint in tertiary grey.
             TextField(
               controller: QuranCtrl.instance.searchTextController,
               focusNode: QuranCtrl.instance.searchFocusNode,
               autofocus: true,
               onTap: () {
                 final ctrl = QuranCtrl.instance;
-                // إزالة أي Overlay قد يعترض التركيز
                 ctrl.state.isShowMenu.value = false;
-                // تعطيل تركيز PageView مؤقتًا على الويب
                 if (kIsWeb) {
                   ctrl.state.quranPageRLFocusNode.canRequestFocus = false;
                   if (ctrl.searchFocusNode.canRequestFocus) {
@@ -87,41 +91,38 @@ class _SearchTabState extends State<_SearchTab> {
                 final surahResults = QuranLibrary().surahSearch(txt);
                 quranCtrl.searchResultSurahs.value = [...surahResults];
               },
-              style: s.searchTextStyle ?? TextStyle(color: textColor),
+              style: QuranLibrary().cairoStyle.copyWith(
+                    fontSize: 15,
+                    color: AppColors.textColor,
+                    letterSpacing: -0.1,
+                  ),
               decoration: InputDecoration(
-                fillColor:
-                    accentColor.withValues(alpha: s.searchFillAlpha ?? 0.1),
+                fillColor: Colors.white,
                 filled: true,
-                contentPadding: s.searchContentPadding ??
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                suffixIcon: Icon(
-                  s.searchSuffixIconData ?? Icons.search,
-                  color: textColor.withValues(
-                      alpha: s.searchSuffixIconAlpha ?? 0.6),
+                contentPadding: const EdgeInsets.symmetric(
+                    vertical: 14, horizontal: 14),
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  color: AppColors.tealDeep,
+                  size: 20,
                 ),
                 hintText: s.searchHintText ?? 'بحث في القرآن',
-                hintStyle: s.searchHintStyle ??
-                    QuranLibrary().cairoStyle.copyWith(
-                        color: textColor.withValues(alpha: 0.6),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600),
+                hintStyle: QuranLibrary().cairoStyle.copyWith(
+                      color: AppColors.greyLight,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                 border: OutlineInputBorder(
-                  borderSide:
-                      BorderSide(color: textColor.withValues(alpha: 0.1)),
-                  borderRadius: BorderRadius.circular(
-                      (s.searchBorderRadius ?? 10).toDouble()),
+                  borderSide: const BorderSide(color: AppColors.divider, width: 1.5),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderSide:
-                      BorderSide(color: textColor.withValues(alpha: 0.1)),
-                  borderRadius: BorderRadius.circular(
-                      (s.searchBorderRadius ?? 10).toDouble()),
+                  borderSide: const BorderSide(color: AppColors.divider, width: 1.5),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderSide:
-                      BorderSide(color: textColor.withValues(alpha: 0.1)),
-                  borderRadius: BorderRadius.circular(
-                      (s.searchBorderRadius ?? 10).toDouble()),
+                  borderSide: const BorderSide(color: AppColors.teal, width: 1.5),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
@@ -157,32 +158,31 @@ class _SearchTabState extends State<_SearchTab> {
                             rl.requestFocus();
                           }
                         },
+                        // [iqama fork] tealTint pill with tealDeep
+                        // label — same shape as a `_Chip` elsewhere
+                        // in the app. Hairline border for definition.
                         child: Container(
                           alignment: Alignment.center,
-                          padding: s.surahChipPadding ??
-                              const EdgeInsets.symmetric(horizontal: 8.0),
-                          margin: s.surahChipMargin ??
-                              const EdgeInsets.symmetric(
-                                  horizontal: 4.0, vertical: 10.0),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 12),
                           decoration: BoxDecoration(
-                            color: (s.surahChipBgColor ?? accentColor),
-                            borderRadius: BorderRadius.all(Radius.circular(
-                                (s.surahChipRadius ?? 8).toDouble())),
+                            color: AppColors.tealTint,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: AppColors.teal.withValues(alpha: 0.25),
+                              width: 1,
+                            ),
                           ),
-                          // [iqama fork] Show the plain Arabic surah
-                          // name (e.g. الفاتحة) in Cairo instead of the
-                          // calligraphic-font digit that looks like a
-                          // number to anyone not familiar with mushaf
-                          // typography. Host-provided
-                          // `surahChipTextStyle` still wins if set.
                           child: Text(
                             search.arabicName,
-                            style: s.surahChipTextStyle ??
-                                QuranLibrary().cairoStyle.copyWith(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                            style: QuranLibrary().cairoStyle.copyWith(
+                                  color: AppColors.tealDeep,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.1,
+                                ),
                             textAlign: TextAlign.center,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -195,67 +195,93 @@ class _SearchTabState extends State<_SearchTab> {
               );
             }),
             const SizedBox(height: 8),
-            // Ayah results list
+            // [iqama fork] Ayah results — Iqama card rows.
+            // Surah name + page number as a small chip header, ayah
+            // rendered below in the package's Quran font. Each card
+            // has the same hairline border as the surah list above.
             Expanded(
               child: GetX<QuranCtrl>(
                 builder: (quranCtrl) => ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
                   itemCount: quranCtrl.searchResultAyahs.length,
-                  separatorBuilder: (_, __) => Divider(
-                    color: s.resultsDividerColor ?? Colors.grey,
-                    thickness: s.resultsDividerThickness ?? 1,
-                  ),
+                  separatorBuilder: (_, __) => const SizedBox(height: 6),
                   itemBuilder: (context, i) {
                     final ayah = quranCtrl.searchResultAyahs[i];
-                    return ListTile(
-                      onTap: () {
-                        Navigator.pop(context);
-                        quranCtrl.searchResultAyahs.value = [];
-                        // if (quranCtrl.isDownloadFonts) {
-                        //   await quranCtrl.prepareFonts(ayah.page);
-                        // }
-                        QuranLibrary().jumpToAyah(ayah.page, ayah.ayahUQNumber);
-                        // إعادة تمكين تركيز PageView بعد إغلاق البحث على الويب
-                        if (kIsWeb) {
-                          final rl =
-                              QuranCtrl.instance.state.quranPageRLFocusNode;
-                          rl.canRequestFocus = true;
-                          rl.requestFocus();
-                        }
-                      },
-                      title: IgnorePointer(
-                        ignoring: true,
-                        child: GetSingleAyah(
-                          surahNumber: ayah.surahNumber!,
-                          ayahNumber: ayah.ayahNumber,
-                          isBold: false,
-                          fontSize: 26,
-                          textColor: textColor,
-                          isDark: widget.isDark,
-                          pageIndex: ayah.page,
-                          enabledTajweed:
-                              quranCtrl.state.isTajweedEnabled.value,
-                          // ayahs: ayah,
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          Navigator.pop(context);
+                          quranCtrl.searchResultAyahs.value = [];
+                          QuranLibrary().jumpToAyah(ayah.page, ayah.ayahUQNumber);
+                          if (kIsWeb) {
+                            final rl =
+                                QuranCtrl.instance.state.quranPageRLFocusNode;
+                            rl.canRequestFocus = true;
+                            rl.requestFocus();
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.dividerSoft),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.tealTint,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      ayah.arabicName ?? '',
+                                      style: QuranLibrary().cairoStyle.copyWith(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.tealDeep,
+                                            letterSpacing: -0.1,
+                                          ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'صفحة ${ayah.page.toString().convertNumbersAccordingToLang(languageCode: widget.languageCode)}',
+                                    style: QuranLibrary().cairoStyle.copyWith(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.grey,
+                                          letterSpacing: -0.1,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              IgnorePointer(
+                                ignoring: true,
+                                child: GetSingleAyah(
+                                  surahNumber: ayah.surahNumber!,
+                                  ayahNumber: ayah.ayahNumber,
+                                  isBold: false,
+                                  fontSize: 22,
+                                  textColor: textColor,
+                                  isDark: widget.isDark,
+                                  pageIndex: ayah.page,
+                                  enabledTajweed:
+                                      quranCtrl.state.isTajweedEnabled.value,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      subtitle: Row(
-                        children: [
-                          Text(
-                            ayah.arabicName ?? '',
-                            style: TextStyle(
-                                color: textColor.withValues(
-                                    alpha: s.subtitleTextAlpha ?? 0.8)),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'صفحة: ${ayah.page.toString().convertNumbersAccordingToLang(languageCode: widget.languageCode)}',
-                            style: TextStyle(
-                                color: textColor.withValues(
-                                    alpha: s.subtitleTextAlpha ?? 0.8)),
-                          ),
-                        ],
-                      ),
-                      contentPadding: s.listItemContentPadding ??
-                          const EdgeInsets.symmetric(horizontal: 8),
                     );
                   },
                 ),

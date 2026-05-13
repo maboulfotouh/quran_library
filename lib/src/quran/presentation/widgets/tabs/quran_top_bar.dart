@@ -32,49 +32,37 @@ class _QuranTopBar extends StatelessWidget {
     final Color bgColor = backgroundColor ??
         (defaults.backgroundColor ?? AppColors.getBackgroundColor(isDark));
 
+    // [iqama fork] Iqama-style chrome: white surface, hairline
+    // bottom divider in place of a heavy drop shadow, rounded
+    // Material icons instead of bespoke SVGs. Buttons rendered as
+    // _TopBarIconButton so each icon sits inside a tealTint pill
+    // that lights up to teal when the action is in an "on" state
+    // (auto-scroll active, tajweed visible, etc).
+    final iconColor = defaults.iconColor ?? AppColors.tealDeep;
     return Align(
       alignment: Alignment.topCenter,
       child: Container(
-        height: defaults.height ?? 55,
-        padding:
-            defaults.padding ?? const EdgeInsets.symmetric(horizontal: 8.0),
+        height: defaults.height ?? 56,
+        padding: defaults.padding ??
+            const EdgeInsets.symmetric(horizontal: 8.0),
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(defaults.borderRadius ?? 12),
-          boxShadow: [
-            BoxShadow(
-              color:
-                  (defaults.shadowColor ?? Colors.black.withValues(alpha: .2)),
-              spreadRadius: 1,
-              blurRadius: 5,
-              offset: const Offset(0, 5), // changes position of shadow
-            ),
-          ],
+          border: Border(
+            bottom: BorderSide(color: AppColors.divider, width: 1),
+          ),
         ),
         child: Row(
           children: [
             if (defaults.showBackButton ?? false)
-              IconButton(
-                icon: SvgPicture.asset(
-                    defaults.backIconPath ?? AssetsPath.assets.backArrow,
-                    height: defaults.iconSize,
-                    colorFilter: ColorFilter.mode(
-                        defaults.iconColor ??
-                            Theme.of(context).colorScheme.primary,
-                        BlendMode.srcIn)),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
+              _TopBarIconButton(
+                icon: Icons.arrow_back_rounded,
+                color: iconColor,
+                onPressed: () => Navigator.pop(context),
               ),
             if (defaults.showMenuButton ?? true)
-              IconButton(
-                icon: SvgPicture.asset(
-                    defaults.menuIconPath ?? AssetsPath.assets.buttomSheet,
-                    height: defaults.iconSize,
-                    colorFilter: ColorFilter.mode(
-                        defaults.iconColor ??
-                            Theme.of(context).colorScheme.primary,
-                        BlendMode.srcIn)),
+              _TopBarIconButton(
+                icon: Icons.menu_book_rounded,
+                color: iconColor,
                 onPressed: () {
                   QuranCtrl.instance.searchFocusNode.requestFocus();
                   _showMenuBottomSheet(context, defaults);
@@ -82,17 +70,11 @@ class _QuranTopBar extends StatelessWidget {
               ),
             if ((defaults.showMenuButton ?? true) &&
                 (QuranCtrl.instance.state.fontsSelected.value == 0))
-              IconButton(
-                icon: SvgPicture.asset(
-                    defaults.tajweedIconPath ?? AssetsPath.assets.exclamation,
-                    height: defaults.iconSize,
-                    colorFilter: ColorFilter.mode(
-                        defaults.iconColor ??
-                            Theme.of(context).colorScheme.primary,
-                        BlendMode.srcIn)),
-                onPressed: () {
-                  _showDialog(context, tajweedStyle);
-                },
+              _TopBarIconButton(
+                icon: Icons.format_paint_rounded,
+                color: iconColor,
+                tooltip: 'Tajweed',
+                onPressed: () => _showDialog(context, tajweedStyle),
               ),
             const Spacer(),
             if (defaults.customTopBarWidgets != null)
@@ -106,32 +88,10 @@ class _QuranTopBar extends StatelessWidget {
                         AutoScrollCtrl.instance.state.isActive.value;
                     return QuranCtrl.instance.state.displayMode.value ==
                             QuranDisplayMode.defaultMode
-                        ? IconButton(
-                            icon: SvgPicture.asset(
-                                defaults.autoScrollIconPath ??
-                                    AssetsPath.assets.arrowDown,
-                                height: defaults.iconSize,
-                                colorFilter: ColorFilter.mode(
-                                    isAutoScrollActive
-                                        ? (defaults.iconColor ??
-                                            Theme.of(context)
-                                                .colorScheme
-                                                .primary)
-                                        : (defaults.iconColor ??
-                                                Theme.of(context)
-                                                    .colorScheme
-                                                    .primary)
-                                            .withValues(alpha: 0.5),
-                                    BlendMode.srcIn)),
-                            //   Icon(
-                            //   Icons.speed,
-                            //   size: defaults.iconSize ?? 22,
-                            //   color: isAutoScrollActive
-                            //       ? (defaults.accentColor ??
-                            //           Theme.of(context).colorScheme.primary)
-                            //       : (defaults.iconColor ??
-                            //           Theme.of(context).colorScheme.primary),
-                            // ),
+                        ? _TopBarIconButton(
+                            icon: Icons.swap_vert_rounded,
+                            color: iconColor,
+                            active: isAutoScrollActive,
                             onPressed: () {
                               final ctrl = AutoScrollCtrl.instance;
                               if (ctrl.state.isActive.value) {
@@ -146,18 +106,12 @@ class _QuranTopBar extends StatelessWidget {
                         : const SizedBox.shrink();
                   }),
                 if (defaults.showAudioButton ?? true)
-                  IconButton(
-                    icon: SvgPicture.asset(
-                        defaults.audioIconPath ?? AssetsPath.assets.surahsAudio,
-                        height: defaults.iconSize,
-                        colorFilter: ColorFilter.mode(
-                            defaults.iconColor ??
-                                Theme.of(context).colorScheme.primary,
-                            BlendMode.srcIn)),
+                  _TopBarIconButton(
+                    icon: Icons.headphones_rounded,
+                    color: iconColor,
                     onPressed: () async {
                       await AudioCtrl.instance.state.audioPlayer.stop();
                       QuranCtrl.instance.state.isShowMenu.value = false;
-                      // await AudioCtrl.instance.lastAudioSource();
                       if (context.mounted) {
                         Navigator.push(
                           context,
@@ -220,9 +174,10 @@ class _QuranTopBar extends StatelessWidget {
       backgroundColor: backgroundColor ??
           defaults.backgroundColor ??
           AppColors.getBackgroundColor(isDark),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-            top: Radius.circular(defaults.borderRadius ?? 20)),
+      // [iqama fork] 24px top corners to match the rest of the app's
+      // bottom sheets (daily-actions, member-stats, league-created).
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       isScrollControlled: true,
       constraints: BoxConstraints(
@@ -283,41 +238,57 @@ class _MenuBottomSheet extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              // Drag handle + header
-              Container(
-                width: 44,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color:
-                      (style.handleColor ?? textColor.withValues(alpha: 0.25)),
-                  borderRadius: BorderRadius.circular(2),
+              // [iqama fork] Drag handle uses the Iqama divider
+              // color for visual continuity with our other sheets.
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: style.handleColor ?? AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
+              // [iqama fork] Segmented pill matches the rest of the
+              // app's pill-style toggles — tealTint track, teal
+              // selected pill with white label, ink unselected text.
               Container(
-                height: 40,
+                height: 42,
                 decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.06),
+                  color: AppColors.tealTint,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.divider),
                 ),
                 child: TabBar(
                   indicatorSize: TabBarIndicatorSize.tab,
                   indicator: BoxDecoration(
-                    color: accentColor,
+                    color: AppColors.teal,
                     borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.teal.withValues(alpha: 0.20),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   indicatorPadding:
                       style.indicatorPadding ?? const EdgeInsets.all(4),
+                  dividerColor: Colors.transparent,
                   padding: EdgeInsets.zero,
                   labelColor: Colors.white,
-                  unselectedLabelColor: textColor.withValues(alpha: 0.6),
+                  unselectedLabelColor: AppColors.tealDeep,
                   indicatorColor: accentColor,
                   indicatorWeight: .5,
                   labelStyle: QuranLibrary().cairoStyle.copyWith(
-                      fontSize: 15, fontWeight: FontWeight.w700, height: 1.3),
-                  unselectedLabelStyle:
-                      QuranLibrary().cairoStyle.copyWith(fontSize: 15),
+                      fontSize: 14, fontWeight: FontWeight.w700, height: 1.3,
+                      letterSpacing: -0.1),
+                  unselectedLabelStyle: QuranLibrary().cairoStyle.copyWith(
+                      fontSize: 14, fontWeight: FontWeight.w600,
+                      letterSpacing: -0.1),
                   tabs: [
                     if (!isSingleSurah)
                       Tab(text: style.tabIndexLabel ?? 'الفهرس'),
@@ -356,3 +327,51 @@ class _MenuBottomSheet extends StatelessWidget {
     );
   }
 }
+
+// ─── Iqama-style top-bar icon button ─────────────────────────────────────────
+
+/// [iqama fork] Square 40×40 button with a tealTint backdrop pill
+/// that brightens to full teal when [active] is true. Used by every
+/// action in the Quran top bar so the chrome reads as a row of
+/// equally-weighted, tappable affordances rather than bare SVGs.
+class _TopBarIconButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final bool active;
+  final VoidCallback onPressed;
+  final String? tooltip;
+
+  const _TopBarIconButton({
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+    this.active = false,
+    this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Material(
+        color: active ? AppColors.teal : AppColors.tealTint,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(
+              icon,
+              size: 20,
+              color: active ? Colors.white : color,
+            ),
+          ),
+        ),
+      ),
+    );
+    return tooltip != null ? Tooltip(message: tooltip!, child: button) : button;
+  }
+}
+

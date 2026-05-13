@@ -13,41 +13,47 @@ class _IndexTab extends StatelessWidget {
     final hizbList = QuranLibrary.allHizb;
     final surahs = QuranLibrary.getAllSurahs(isArabic: false);
 
-    final Color textColor = style.textColor ?? AppColors.getTextColor(isDark);
-    final Color accentColor =
+    // accentColor + textColor are no longer used at this level —
+    // the inner tab pill is hardcoded to the Iqama palette and the
+    // child lists pull their own text colors. Kept around for any
+    // future host-supplied overrides via [style].
+    // ignore: unused_local_variable
+    final accentColor =
         style.accentColor ?? Theme.of(context).colorScheme.primary;
 
     return DefaultTabController(
       length: 2,
       child: Column(
         children: [
+          // [iqama fork] Inner segmented pill mirrors the outer
+          // sheet's tabs (tealTint track, teal selected pill).
           Container(
-            height: style.tabBarHeight ?? 35,
+            height: 38,
             decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: style.tabBarBgAlpha ?? 0.06),
-              borderRadius:
-                  BorderRadius.circular((style.tabBarRadius ?? 12).toDouble()),
+              color: AppColors.tealTint,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: AppColors.dividerSoft),
             ),
             child: TabBar(
               indicatorSize: TabBarIndicatorSize.tab,
               indicator: BoxDecoration(
-                color: accentColor,
-                borderRadius: BorderRadius.circular(
-                    (style.indicatorRadius ?? 10).toDouble()),
+                color: AppColors.teal,
+                borderRadius: BorderRadius.circular(9),
               ),
               indicatorPadding:
-                  style.indicatorPadding ?? const EdgeInsets.all(4),
+                  style.indicatorPadding ?? const EdgeInsets.all(3),
+              dividerColor: Colors.transparent,
               padding: EdgeInsets.zero,
-              labelColor: style.labelColor ?? Colors.white,
-              unselectedLabelColor: style.unselectedLabelColor ??
-                  textColor.withValues(alpha: 0.6),
+              labelColor: Colors.white,
+              unselectedLabelColor: AppColors.tealDeep,
               indicatorColor: accentColor,
               indicatorWeight: .5,
-              labelStyle: style.labelStyle ??
-                  QuranLibrary().cairoStyle.copyWith(
-                      fontSize: 13, fontWeight: FontWeight.w700, height: 1.3),
-              unselectedLabelStyle: style.unselectedLabelStyle ??
-                  QuranLibrary().cairoStyle.copyWith(fontSize: 13),
+              labelStyle: QuranLibrary().cairoStyle.copyWith(
+                  fontSize: 13.5, fontWeight: FontWeight.w700,
+                  height: 1.3, letterSpacing: -0.1),
+              unselectedLabelStyle: QuranLibrary().cairoStyle.copyWith(
+                  fontSize: 13.5, fontWeight: FontWeight.w600,
+                  letterSpacing: -0.1),
               tabs: [
                 Tab(text: style.tabSurahsLabel ?? 'السور'),
                 Tab(text: style.tabJozzLabel ?? 'الأجزاء'),
@@ -113,11 +119,14 @@ class _SurahsList extends StatelessWidget {
     });
 
     final Color textColor = style.textColor ?? AppColors.getTextColor(isDark);
-    final Color accentColor =
-        style.accentColor ?? Theme.of(context).colorScheme.primary;
+    // [iqama fork] Iqama card-row: white tile, hairline divider,
+    // circular tealTint badge with the surah number, plain Arabic
+    // surah name (the calligraphic font reads as decoration, not
+    // a label — clearer to ship the Cairo name only here).
     return ListView.builder(
       controller: scrollCtrl,
       itemCount: surahs.length,
+      padding: const EdgeInsets.symmetric(vertical: 4),
       itemBuilder: (context, index) {
         final bool isCurrent = (currentIndex == index);
         return Material(
@@ -127,73 +136,78 @@ class _SurahsList extends StatelessWidget {
               Navigator.pop(context);
               QuranLibrary().jumpToSurah(index + 1);
             },
+            borderRadius: BorderRadius.circular(12),
             child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 3),
               padding:
-                  const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-              margin: const EdgeInsets.symmetric(vertical: 2.0),
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: isCurrent
-                    ? accentColor.withValues(alpha: 0.15)
-                    : (index.isEven
-                        ? accentColor.withValues(
-                            alpha: (style.surahRowAltBgAlpha ?? 0.1))
-                        : Colors.transparent),
-                borderRadius: BorderRadius.circular(
-                    (style.listItemRadius ?? 8).toDouble()),
+                color: isCurrent ? AppColors.tealTint : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isCurrent ? AppColors.teal : AppColors.dividerSoft,
+                  width: isCurrent ? 1.5 : 1,
+                ),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Stack(
+                  // Number badge — circle, tealTint background,
+                  // tealDeep numeral. Becomes teal/white when this
+                  // is the current surah so the eye lands on it.
+                  Container(
+                    width: 40,
+                    height: 40,
                     alignment: Alignment.center,
-                    children: [
-                      SvgPicture.asset(
-                        AssetsPath.assets.suraNum,
-                        width: 50,
-                        height: 50,
-                        colorFilter: ColorFilter.mode(
-                          style.surahNumberDecorationColor ??
-                              Colors.teal.withValues(alpha: 0.6),
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                      Text(
-                        '${index + 1}'.convertNumbersAccordingToLang(
-                            languageCode: languageCode),
-                        style: QuranLibrary()
-                            .cairoStyle
-                            .copyWith(fontSize: 16, color: textColor),
-                      ),
-                    ],
+                    decoration: BoxDecoration(
+                      color: isCurrent ? AppColors.teal : AppColors.tealTint,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${index + 1}'.convertNumbersAccordingToLang(
+                          languageCode: languageCode),
+                      style: QuranLibrary().cairoStyle.copyWith(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isCurrent ? Colors.white : AppColors.tealDeep,
+                            letterSpacing: -0.1,
+                          ),
+                    ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        ' surah${(index + 1).toString().padLeft(3, '0')} ',
-                        style: TextStyle(
-                          color: textColor,
-                          fontFamily: "surah-name-v4",
-                          fontSize: 32,
-                          package: "quran_library",
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          surahs[index],
+                          style: QuranLibrary().cairoStyle.copyWith(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: textColor,
+                                letterSpacing: -0.15,
+                                height: 1.2,
+                              ),
                         ),
-                      ),
-                      // Text(
-                      //   (index + 1).toString(),
-                      //   style: TextStyle(
-                      //     color: textColor,
-                      //     fontFamily: "surahName",
-                      //     fontSize: 32,
-                      //     package: "quran_library",
-                      //   ),
-                      //   textAlign: TextAlign.center,
-                      // ),
-                      Text(
-                        surahs[index],
-                        style: QuranLibrary().cairoStyle.copyWith(
-                            fontSize: 14, color: textColor, height: 1.2),
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          ' surah${(index + 1).toString().padLeft(3, '0')} ',
+                          style: TextStyle(
+                            color: AppColors.tealDeep,
+                            fontFamily: 'surah-name-v4',
+                            fontSize: 22,
+                            package: 'quran_library',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: isCurrent
+                        ? AppColors.tealDeep
+                        : AppColors.greyLight,
                   ),
                 ],
               ),
@@ -240,81 +254,117 @@ class _JozzList extends StatelessWidget {
     });
 
     final Color textColor = style.textColor ?? AppColors.getTextColor(isDark);
-    final Color accentColor =
-        style.accentColor ?? Theme.of(context).colorScheme.primary;
+    // [iqama fork] Juz rows are Iqama-style cards. Current juz gets
+    // a tealTint background + teal border so the user can find their
+    // spot quickly. ExpansionTile reveals the two hizbs inside.
     return ListView.builder(
       controller: jozzScrollCtrl,
       itemCount: jozzList.length,
-      itemBuilder: (context, jozzIndex) => Container(
-        margin: const EdgeInsets.symmetric(vertical: 2.0),
-        decoration: BoxDecoration(
-          color: jozzIndex.isEven
-              ? accentColor.withValues(alpha: (style.jozzAltBgAlpha ?? 0.1))
-              : Colors.transparent,
-          borderRadius:
-              BorderRadius.circular((style.listItemRadius ?? 8).toDouble()),
-        ),
-        child: ExpansionTile(
-          initiallyExpanded: currentJozzIndex == jozzIndex,
-          collapsedShape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular((style.listItemRadius ?? 8).toDouble()),
-            side: BorderSide(
-              color: textColor.withValues(alpha: 0.1),
-              width: 1,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemBuilder: (context, jozzIndex) {
+        final isCurrent = currentJozzIndex == jozzIndex;
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 3),
+          decoration: BoxDecoration(
+            color: isCurrent ? AppColors.tealTint : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isCurrent ? AppColors.teal : AppColors.dividerSoft,
+              width: isCurrent ? 1.5 : 1,
             ),
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular((style.listItemRadius ?? 8).toDouble()),
-            side: BorderSide(
-              color: textColor.withValues(alpha: 0.1),
-              width: 1,
+          child: Theme(
+            // Strip ExpansionTile's default top/bottom divider lines
+            // since they fight with our card border.
+            data: Theme.of(context).copyWith(
+              dividerColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
             ),
-          ),
-          title: Text(
-            jozzList[jozzIndex],
-            style: QuranLibrary().cairoStyle.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: textColor,
+            child: ExpansionTile(
+              initiallyExpanded: isCurrent,
+              tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+              childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              iconColor: AppColors.tealDeep,
+              collapsedIconColor: AppColors.greyLight,
+              leading: Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isCurrent ? AppColors.teal : AppColors.tealTint,
+                  shape: BoxShape.circle,
                 ),
-          ),
-          children: List.generate(2, (index) {
-            final hizbIndex =
-                (index == 0 && jozzIndex == 0) ? 0 : ((jozzIndex * 2 + index));
-            return Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(4),
-                onTap: () {
-                  Navigator.pop(context);
-                  QuranLibrary().jumpToHizb(hizbIndex + 1);
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      vertical: 8.0, horizontal: 16.0),
-                  margin: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 2.0),
-                  decoration: BoxDecoration(
-                    color: index.isEven
-                        ? accentColor.withValues(
-                            alpha: (style.hizbItemAltBgAlpha ?? 0.05))
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    hizbList[hizbIndex],
-                    style: QuranLibrary().cairoStyle.copyWith(
-                          color: textColor,
-                        ),
-                  ),
+                child: Icon(
+                  Icons.bookmark_rounded,
+                  size: 18,
+                  color: isCurrent ? Colors.white : AppColors.tealDeep,
                 ),
               ),
-            );
-          }),
-        ),
-      ),
+              title: Text(
+                jozzList[jozzIndex],
+                style: QuranLibrary().cairoStyle.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: textColor,
+                      letterSpacing: -0.1,
+                    ),
+              ),
+              children: List.generate(2, (index) {
+                final hizbIndex = (index == 0 && jozzIndex == 0)
+                    ? 0
+                    : (jozzIndex * 2 + index);
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () {
+                      Navigator.pop(context);
+                      QuranLibrary().jumpToHizb(hizbIndex + 1);
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.dividerSoft),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.subdirectory_arrow_left_rounded,
+                            size: 14,
+                            color: AppColors.greyLight,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              hizbList[hizbIndex],
+                              style: QuranLibrary().cairoStyle.copyWith(
+                                    fontSize: 13.5,
+                                    color: textColor,
+                                    letterSpacing: -0.1,
+                                  ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 16,
+                            color: AppColors.greyLight,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        );
+      },
     );
   }
 }

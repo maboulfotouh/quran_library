@@ -236,60 +236,63 @@ class AyahMenuStyle {
   }
 
   /// القيم الافتراضية للنمط بحسب الوضع الليلي/النهاري.
+  ///
+  /// [iqama fork] Repointed to the Iqama palette: white surface,
+  /// soft divider hairline, gentle elevation, rounded Material
+  /// icons for every action. Bookmark color swatches kept as the
+  /// classic yellow/red/green so saved bookmarks stay scannable.
   factory AyahMenuStyle.defaults({
     required bool isDark,
     required BuildContext context,
   }) {
-    final scheme = Theme.of(context).colorScheme;
-    final primary = scheme.primary;
     return AyahMenuStyle(
       backgroundColor: AppColors.getBackgroundColor(isDark),
-      borderColor: primary.withValues(alpha: 0.1),
-      borderWidth: 2.0,
-      borderRadius: 6.0,
-      outerBorderRadius: 8.0,
+      borderColor: AppColors.divider,
+      borderWidth: 1.0,
+      borderRadius: 12.0,
+      outerBorderRadius: 14.0,
       bookmarkColorCodes: const [
-        0xAAFFD354, // أصفر باهت
-        0xAAF36077, // وردي داكن
-        0xAA00CD00, // أخضر
+        0xAAFFD354,
+        0xAAF36077,
+        0xAA00CD00,
       ],
-      copyIconColor: primary,
-      tafsirIconColor: primary,
-      dividerColor: primary.withValues(alpha: 0.1),
+      copyIconColor: AppColors.tealDeep,
+      tafsirIconColor: AppColors.tealDeep,
+      dividerColor: AppColors.dividerSoft,
       boxShadow: [
         BoxShadow(
-          color: Colors.grey.withValues(alpha: 0.3),
-          blurRadius: 10,
-          spreadRadius: 5,
-          offset: const Offset(0, 5),
+          color: AppColors.textColor.withValues(alpha: 0.10),
+          blurRadius: 16,
+          spreadRadius: 0,
+          offset: const Offset(0, 6),
         ),
       ],
-      padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-      margin: const EdgeInsets.all(4.0),
-      dialogHeight: 80.0,
-      iconSize: 24.0,
-      iconHorizontalPadding: 8.0,
+      padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0),
+      margin: const EdgeInsets.all(2.0),
+      dialogHeight: 56.0,
+      iconSize: 20.0,
+      iconHorizontalPadding: 10.0,
       itemBaseWidth: 40.0,
-      itemSpacing: 16.0,
-      extraHorizontalSpace: 40.0,
-      dividerHeight: 30.0,
+      itemSpacing: 14.0,
+      extraHorizontalSpace: 36.0,
+      dividerHeight: 22.0,
       dividerThickness: 1.0,
       showBookmarkButtons: true,
       showCopyButton: true,
       showTafsirButton: true,
-      bookmarkIconData: Icons.bookmark,
+      bookmarkIconData: Icons.bookmark_rounded,
       copyIconData: Icons.copy_rounded,
-      tafsirIconData: Icons.text_snippet_rounded,
+      tafsirIconData: Icons.menu_book_rounded,
       tapOffsetSpacing: 10.0,
       edgeSafeMargin: 10.0,
-      copySuccessMessage: 'تم النسخ الى الحافظة',
+      copySuccessMessage: 'تم النسخ إلى الحافظة',
       customMenuItems: null,
       showPlayAllButton: true,
       showPlayButton: true,
-      playIconData: Icons.play_arrow,
-      playAllIconData: Icons.playlist_play,
-      playIconColor: primary,
-      playAllIconColor: primary,
+      playIconData: Icons.play_arrow_rounded,
+      playAllIconData: Icons.playlist_play_rounded,
+      playIconColor: AppColors.tealDeep,
+      playAllIconColor: AppColors.tealDeep,
     );
   }
 }
