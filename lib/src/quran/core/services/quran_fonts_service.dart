@@ -63,17 +63,34 @@ class QuranFontsService {
 
   /// [iqama fork] Stop all in-flight and queued downloads for the
   /// rest of this isolate session. Cached pages stay cached — just
-  /// stops the trickle. Same end state as the gate returning false:
-  /// future page-load attempts short-circuit instantly.
+  /// stops the trickle. Future page-load attempts short-circuit
+  /// instantly until [resumeDownloads] is called.
   ///
-  /// Safe to call multiple times. Resetting `_downloadsAborted` to
-  /// false after this requires an isolate restart (or manual flip
-  /// via host code if you really know what you're doing).
+  /// Safe to call multiple times.
   static void cancelDownloads() {
     _downloadsAborted = true;
     if (!_downloadCancelToken.isCancelled) {
       _downloadCancelToken.cancel('user cancelled Tajweed downloads');
     }
+    _backgroundLoadFuture = null;
+  }
+
+  /// [iqama fork] Reset session-level abort state so downloads can
+  /// run again after a previous [cancelDownloads] or a declined
+  /// gate. Call this from the host BEFORE re-entering the consent
+  /// flow (e.g. when the user re-opens the Quran reader after
+  /// cancelling): it clears the abort flag, recreates the Dio
+  /// cancel token, and drops the cached gate-Future so the host's
+  /// `beforeDownloadGate` is called fresh.
+  ///
+  /// Cached pages remain on disk — only in-memory session flags
+  /// are touched.
+  static void resumeDownloads() {
+    _downloadsAborted = false;
+    if (_downloadCancelToken.isCancelled) {
+      _downloadCancelToken = CancelToken();
+    }
+    _gatePending = null;
     _backgroundLoadFuture = null;
   }
 
@@ -383,7 +400,11 @@ class QuranFontsService {
       _gatePending ??= beforeDownloadGate!();
       final ok = await _gatePending!;
       if (!ok) {
-        _downloadsAborted = true;
+        // Don't set _downloadsAborted here — that's only for an
+        // explicit cancelDownloads() mid-flight. Instead, clear the
+        // gate Future so a subsequent re-entry (e.g. user reopens
+        // the Quran reader after declining) can ask again.
+        _gatePending = null;
         throw _FontDownloadDeclinedException();
       }
     }
