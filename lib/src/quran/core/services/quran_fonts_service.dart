@@ -51,6 +51,32 @@ class QuranFontsService {
   /// with retries this session.
   static bool _downloadsAborted = false;
 
+  /// [iqama fork] Called after each page transitions to ready
+  /// (`_loadedPages.add(page)`), with the running count and total.
+  /// Hosts use this to drive a progress UI. Pure no-op when null.
+  /// Reset to null between sessions if you want a clean state.
+  static void Function(int loaded, int total)? onProgress;
+
+  /// [iqama fork] Active CancelToken for in-flight network fetches.
+  /// Recreated each session; cancelled by [cancelDownloads].
+  static CancelToken _downloadCancelToken = CancelToken();
+
+  /// [iqama fork] Stop all in-flight and queued downloads for the
+  /// rest of this isolate session. Cached pages stay cached — just
+  /// stops the trickle. Same end state as the gate returning false:
+  /// future page-load attempts short-circuit instantly.
+  ///
+  /// Safe to call multiple times. Resetting `_downloadsAborted` to
+  /// false after this requires an isolate restart (or manual flip
+  /// via host code if you really know what you're doing).
+  static void cancelDownloads() {
+    _downloadsAborted = true;
+    if (!_downloadCancelToken.isCancelled) {
+      _downloadCancelToken.cancel('user cancelled Tajweed downloads');
+    }
+    _backgroundLoadFuture = null;
+  }
+
   /// الصفحات المحمّلة في هذا التشغيل (1-based).
   static final Set<int> _loadedPages = {};
 
@@ -274,6 +300,9 @@ class QuranFontsService {
         await loadFontFromList(nrBytes, fontFamily: '${familyName}nr');
 
         _loadedPages.add(page);
+        // [iqama fork] Notify host of per-page progress. Stays a no-op
+        // when no callback is registered.
+        onProgress?.call(_loadedPages.length, _totalPages);
       } catch (e, st) {
         log('QuranFontsService: failed to load font page $page: $e',
             name: 'QuranFontsService', stackTrace: st);
@@ -312,6 +341,13 @@ class QuranFontsService {
   /// handled by the caller.
   static Future<Uint8List> _fetchPageGzip(
       int page, Directory? cacheDir) async {
+    // [iqama fork] Recreate the cancel token if it was used. Lets
+    // the host re-enter Tajweed mode within the same session after
+    // a previous cancellation cleared _downloadsAborted (in tests /
+    // hot reload / explicit reset).
+    if (_downloadCancelToken.isCancelled && !_downloadsAborted) {
+      _downloadCancelToken = CancelToken();
+    }
     final padded = page.toString().padLeft(3, '0');
     final fileName = 'QCF4${padded}_COLOR-Regular.ttf.gz';
 
@@ -361,7 +397,10 @@ class QuranFontsService {
       responseType: ResponseType.bytes,
     ));
     try {
-      final resp = await dio.get<List<int>>(url);
+      final resp = await dio.get<List<int>>(
+        url,
+        cancelToken: _downloadCancelToken,
+      );
       if (resp.statusCode != 200 || resp.data == null) {
         throw Exception('HTTP ${resp.statusCode} for $url');
       }
