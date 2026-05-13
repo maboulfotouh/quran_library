@@ -92,6 +92,15 @@ class QuranFontsService {
     }
     _gatePending = null;
     _backgroundLoadFuture = null;
+    // Drop cached page-load futures for pages that NEVER finished
+    // loading. `_loadSinglePage` swallows its own exceptions and
+    // leaves a (resolved-but-incomplete) future in `_pageLoadFutures`,
+    // which `putIfAbsent` would later treat as "already loaded" — so
+    // a subsequent attempt skips the gate entirely and the user
+    // stares at blank pages with no consent dialog. Keep entries
+    // for pages already in `_loadedPages` (they really are loaded).
+    _pageLoadFutures
+        .removeWhere((page, _) => !_loadedPages.contains(page));
   }
 
   /// الصفحات المحمّلة في هذا التشغيل (1-based).
@@ -214,6 +223,27 @@ class QuranFontsService {
     return _backgroundLoadFuture!;
   }
 
+  /// [iqama fork] Host-friendly variant of [loadRemainingInBackground].
+  /// Doesn't need the package's `RxDouble`/`RxBool` plumbing — the host
+  /// observes progress via [onProgress]. Idempotent / single-flighted:
+  /// safe to call from the consent flow without worrying about an
+  /// in-flight background loop already running from the package side.
+  static Future<void> startBulkDownload({int startNearPage = 1}) {
+    if (allLoaded) return Future.value();
+    _backgroundLoadFuture ??= _doLoadRemaining(
+      startNearPage: startNearPage,
+      progress: RxDouble(0.0),
+      ready: RxBool(false),
+    );
+    return _backgroundLoadFuture!;
+  }
+
+  /// [iqama fork] Max concurrent page downloads. Each page hits S3
+  /// once for the .gz then does CPU work to make 5 CPAL variants.
+  /// Going above ~8 saturates the UI isolate and the dialog appears
+  /// to freeze even though pages are loading.
+  static const int _backgroundConcurrency = 8;
+
   static Future<void> _doLoadRemaining({
     required int startNearPage,
     required RxDouble progress,
@@ -222,14 +252,36 @@ class QuranFontsService {
     final cacheDir = await _ensureCacheDir();
     final loadOrder = _buildLoadOrder(startNearPage);
 
-    for (final page in loadOrder) {
-      if (_loadedPages.contains(page)) continue;
-      await _loadSinglePage(page, cacheDir);
-      progress.value = _loadedPages.length / _totalPages;
+    // [iqama fork] Parallelized with a fixed-size worker pool so the
+    // background loop doesn't stall the dialog for 5–20 minutes on a
+    // sequential 604-page network walk. Workers pull from a shared
+    // cursor — finishes early if downloads are aborted, never
+    // re-queues a failed page (its poisoned future is cleared on the
+    // next `resumeDownloads`).
+    var cursor = 0;
+    Future<void> worker() async {
+      while (true) {
+        if (_downloadsAborted) return;
+        if (cursor >= loadOrder.length) return;
+        final page = loadOrder[cursor++];
+        if (_loadedPages.contains(page)) continue;
+        try {
+          await _loadSinglePage(page, cacheDir);
+        } catch (_) {
+          // _loadSinglePage swallows its own errors, but a stray
+          // exception out here would kill the worker. Keep going so
+          // one bad page doesn't take down the whole pool.
+        }
+        progress.value = _loadedPages.length / _totalPages;
+      }
     }
 
-    progress.value = 1.0;
-    ready.value = true;
+    await Future.wait(List.generate(_backgroundConcurrency, (_) => worker()));
+
+    if (!_downloadsAborted) {
+      progress.value = 1.0;
+      ready.value = true;
+    }
   }
 
   /// بناء ترتيب التحميل: يبدأ من [startPage] ويتوسع للخارج.
