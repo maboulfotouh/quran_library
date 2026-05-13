@@ -45,6 +45,14 @@ class TopBottomQuranStyle {
   /// لون إسم السجدة في الأسفل
   final Color? sajdaNameColor;
 
+  /// [iqama fork] Optional builder rendered between the page
+  /// content and the bottom strip (page number / hizb / sajda).
+  /// Hosts use this to drop a per-page action — e.g. a "mark page
+  /// as read" pill — without modifying the package's page widgets.
+  /// Receives the 0-based page index. Return null (or an empty
+  /// widget) to render nothing on a particular page.
+  final TopBottomCustomChildBuilder? pageActionBuilder;
+
   const TopBottomQuranStyle({
     this.juzName,
     this.sajdaName,
@@ -57,6 +65,7 @@ class TopBottomQuranStyle {
     this.hizbTextColor,
     this.pageNumberColor,
     this.sajdaNameColor,
+    this.pageActionBuilder,
   });
 
   TopBottomQuranStyle copyWith({
@@ -71,6 +80,7 @@ class TopBottomQuranStyle {
     Color? hizbTextColor,
     Color? pageNumberColor,
     Color? sajdaNameColor,
+    TopBottomCustomChildBuilder? pageActionBuilder,
   }) {
     return TopBottomQuranStyle(
       juzName: juzName ?? this.juzName,
@@ -84,6 +94,7 @@ class TopBottomQuranStyle {
       hizbTextColor: hizbTextColor ?? this.hizbTextColor,
       pageNumberColor: pageNumberColor ?? this.pageNumberColor,
       sajdaNameColor: sajdaNameColor ?? this.sajdaNameColor,
+      pageActionBuilder: pageActionBuilder ?? this.pageActionBuilder,
     );
   }
 

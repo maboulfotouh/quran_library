@@ -25,9 +25,19 @@ class TopAndBottomWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final topBottomStyle = TopBottomTheme.of(context)?.style ??
+        TopBottomQuranStyle.defaults(isDark: isDark, context: context);
     final isMobileLargeOrDesktop = Responsive.isMobile(context) ||
         Responsive.isMobileLarge(context) ||
         Responsive.isDesktop(context);
+    // [iqama fork] Optional host-supplied per-page action (e.g.
+    // "mark page as read"). Rendered just above the bottom strip
+    // so the natural reading flow lands on it as the user finishes
+    // a page. Sized to ~44px so the bottom indicators stay legible.
+    final Widget? pageAction = topBottomStyle.pageActionBuilder?.call(
+      context, pageIndex,
+    );
     return UiHelper.currentOrientation(
       // شرح: التخطيط العمودي (Portrait)
       // Explanation: Portrait layout
@@ -60,10 +70,20 @@ class TopAndBottomWidget extends StatelessWidget {
           // Explanation: Bottom section
           Align(
             alignment: Alignment.bottomCenter,
-            child: BuildBottomSection(
-                pageIndex: pageIndex,
-                isRight: isRight,
-                languageCode: languageCode!),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (pageAction != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+                    child: pageAction,
+                  ),
+                BuildBottomSection(
+                    pageIndex: pageIndex,
+                    isRight: isRight,
+                    languageCode: languageCode!),
+              ],
+            ),
           ),
         ],
       ),
@@ -84,6 +104,11 @@ class TopAndBottomWidget extends StatelessWidget {
                       surahNumber: surahNumber,
                     ),
                     if (bounded) Flexible(child: child) else child,
+                    if (pageAction != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+                        child: pageAction,
+                      ),
                     BuildBottomSection(
                         pageIndex: pageIndex,
                         isRight: isRight,
@@ -106,6 +131,11 @@ class TopAndBottomWidget extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 40.0),
                     child: child,
                   ),
+                  if (pageAction != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+                      child: pageAction,
+                    ),
                   BuildBottomSection(
                       pageIndex: pageIndex,
                       isRight: isRight,
