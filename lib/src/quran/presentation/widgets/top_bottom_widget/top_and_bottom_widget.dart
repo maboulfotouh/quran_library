@@ -32,9 +32,9 @@ class TopAndBottomWidget extends StatelessWidget {
         Responsive.isMobileLarge(context) ||
         Responsive.isDesktop(context);
     // [iqama fork] Optional host-supplied per-page action (e.g.
-    // "mark page as read"). Rendered just above the bottom strip
-    // so the natural reading flow lands on it as the user finishes
-    // a page. Sized to ~44px so the bottom indicators stay legible.
+    // "mark page as read"). Handed to BuildTopSection, which slots
+    // it into the centre of the header row between the surah name
+    // and the juz label.
     final Widget? pageAction = topBottomStyle.pageActionBuilder?.call(
       context, pageIndex,
     );
@@ -53,6 +53,7 @@ class TopAndBottomWidget extends StatelessWidget {
               pageIndex: pageIndex,
               isSurah: isSurah!,
               surahNumber: surahNumber,
+              pageAction: pageAction,
             ),
           ),
 
@@ -70,20 +71,10 @@ class TopAndBottomWidget extends StatelessWidget {
           // Explanation: Bottom section
           Align(
             alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (pageAction != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
-                    child: pageAction,
-                  ),
-                BuildBottomSection(
-                    pageIndex: pageIndex,
-                    isRight: isRight,
-                    languageCode: languageCode!),
-              ],
-            ),
+            child: BuildBottomSection(
+                pageIndex: pageIndex,
+                isRight: isRight,
+                languageCode: languageCode!),
           ),
         ],
       ),
@@ -102,13 +93,9 @@ class TopAndBottomWidget extends StatelessWidget {
                       pageIndex: pageIndex,
                       isSurah: isSurah!,
                       surahNumber: surahNumber,
+                      pageAction: pageAction,
                     ),
                     if (bounded) Flexible(child: child) else child,
-                    if (pageAction != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
-                        child: pageAction,
-                      ),
                     BuildBottomSection(
                         pageIndex: pageIndex,
                         isRight: isRight,
@@ -126,16 +113,12 @@ class TopAndBottomWidget extends StatelessWidget {
                     pageIndex: pageIndex,
                     isSurah: isSurah!,
                     surahNumber: surahNumber,
+                    pageAction: pageAction,
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 40.0),
                     child: child,
                   ),
-                  if (pageAction != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
-                      child: pageAction,
-                    ),
                   BuildBottomSection(
                       pageIndex: pageIndex,
                       isRight: isRight,

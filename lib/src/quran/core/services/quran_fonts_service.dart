@@ -57,6 +57,13 @@ class QuranFontsService {
   /// Reset to null between sessions if you want a clean state.
   static void Function(int loaded, int total)? onProgress;
 
+  /// [iqama fork] Fires once when the bulk loader's worker pool
+  /// has finished walking every page — regardless of how many
+  /// succeeded. Hosts use this to dismiss the progress dialog
+  /// even if a stray page failed silently and we never reached
+  /// 100 %. `loaded` may be less than `total` in that case.
+  static void Function(int loaded, int total)? onComplete;
+
   /// [iqama fork] Active CancelToken for in-flight network fetches.
   /// Recreated each session; cancelled by [cancelDownloads].
   static CancelToken _downloadCancelToken = CancelToken();
@@ -104,10 +111,23 @@ class QuranFontsService {
   }
 
   /// الصفحات المحمّلة في هذا التشغيل (1-based).
+  /// "Loaded" means the PRIMARY variant (`page${N}`) is registered
+  /// with Flutter. The four derived variants (`d`, `n`, `nd`, `nr`)
+  /// are generated lazily — see [_ensureVariant].
   static final Set<int> _loadedPages = {};
+
+  /// Family names already passed to [loadFontFromList]. Used by the
+  /// renderer to decide whether to ask for a variant or fall back to
+  /// the primary while the variant generates in the background.
+  static final Set<String> _registeredFamilies = {};
 
   /// Futures لمنع تكرار تحميل نفس الصفحة عند الاستدعاء المتزامن.
   static final Map<int, Future<void>> _pageLoadFutures = {};
+
+  /// Per-variant single-flight futures so two simultaneous frame
+  /// requests for the same `page${N}d` don't double the CPAL +
+  /// register cost. Keyed by family name.
+  static final Map<String, Future<void>> _variantLoadFutures = {};
 
   /// Future واحد لتحميل الخلفية لمنع التكرار.
   static Future<void>? _backgroundLoadFuture;
@@ -255,9 +275,10 @@ class QuranFontsService {
     // [iqama fork] Parallelized with a fixed-size worker pool so the
     // background loop doesn't stall the dialog for 5–20 minutes on a
     // sequential 604-page network walk. Workers pull from a shared
-    // cursor — finishes early if downloads are aborted, never
-    // re-queues a failed page (its poisoned future is cleared on the
-    // next `resumeDownloads`).
+    // cursor. Each page gets up to 2 retry attempts before being
+    // counted as failed — covers transient S3 hiccups (the most
+    // common reason for a page sticking at "loaded but not added"
+    // and the dialog freezing one short of 604).
     var cursor = 0;
     Future<void> worker() async {
       while (true) {
@@ -265,12 +286,24 @@ class QuranFontsService {
         if (cursor >= loadOrder.length) return;
         final page = loadOrder[cursor++];
         if (_loadedPages.contains(page)) continue;
-        try {
-          await _loadSinglePage(page, cacheDir);
-        } catch (_) {
-          // _loadSinglePage swallows its own errors, but a stray
-          // exception out here would kill the worker. Keep going so
-          // one bad page doesn't take down the whole pool.
+
+        const maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+          if (_downloadsAborted) return;
+          try {
+            // Drop the poisoned future first so a previous failure
+            // doesn't short-circuit `putIfAbsent` to the resolved-
+            // but-incomplete entry.
+            if (attempt > 1) _pageLoadFutures.remove(page);
+            await _loadSinglePage(page, cacheDir);
+          } catch (_) {/* swallow — retry decision below */}
+          if (_loadedPages.contains(page)) break;
+          if (attempt < maxAttempts) {
+            // Brief backoff: 300 ms then 800 ms.
+            await Future.delayed(
+              Duration(milliseconds: attempt == 1 ? 300 : 800),
+            );
+          }
         }
         progress.value = _loadedPages.length / _totalPages;
       }
@@ -282,6 +315,15 @@ class QuranFontsService {
       progress.value = 1.0;
       ready.value = true;
     }
+
+    // [iqama fork] One last completion signal. The host's progress
+    // dialog only auto-dismisses on `loaded >= total`, which never
+    // happens if a page genuinely failed all retries. `onComplete`
+    // lets the dialog dismiss with whatever final count we got and
+    // surface a softer warning if loaded < total.
+    final loaded = _loadedPages.length;
+    onProgress?.call(loaded, _totalPages);
+    onComplete?.call(loaded, _totalPages);
   }
 
   /// بناء ترتيب التحميل: يبدأ من [startPage] ويتوسع للخارج.
@@ -312,65 +354,21 @@ class QuranFontsService {
   /// - `page{N}d` — داكن مع تجويد (CPAL: أسود→أبيض)
   /// - `page{N}n` — فاتح بدون تجويد (CPAL: كل الألوان→أسود)
   /// - `page{N}nd` — داكن بدون تجويد (CPAL: كل الألوان→أبيض)
+  /// [iqama fork] Loads ONLY the primary variant (`page${N}`) for
+  /// the bulk path. The dark / no-tajweed / red variants used to be
+  /// generated eagerly here — that meant 5×604 = 3,020
+  /// `loadFontFromList` calls during a fresh download, each of
+  /// which serializes on Flutter's platform thread for Skia font
+  /// registration. The non-primary variants are now generated
+  /// on-demand via [ensureVariant], called by the renderer when it
+  /// actually needs that mode.
   static Future<void> _loadSinglePage(int page, Directory? cacheDir) {
-    // منع التكرار عند الاستدعاء المتزامن لنفس الصفحة
     return _pageLoadFutures.putIfAbsent(page, () async {
       try {
-        Uint8List fontBytes;
         final familyName = 'page$page';
-
-        // جرّب قراءة الكاش أولاً (decompressed TTF)
-        if (cacheDir != null) {
-          final cachedFile = File('${cacheDir.path}/$familyName.ttf');
-          if (cachedFile.existsSync()) {
-            fontBytes = Uint8List.fromList(await cachedFile.readAsBytes());
-          } else {
-            fontBytes = await _decompressForPage(page, cacheDir);
-            try {
-              await cachedFile.writeAsBytes(fontBytes, flush: true);
-            } catch (e) {
-              log('QuranFontsService: cache write failed for page $page: $e',
-                  name: 'QuranFontsService');
-            }
-          }
-        } else {
-          fontBytes = await _decompressForPage(page, cacheDir);
-        }
-
-        // 1. خط فاتح أصلي
-        await loadFontFromList(fontBytes, fontFamily: familyName);
-
-        // 2. خط داكن: CPAL أسود → أبيض
-        final darkBytes = _modifyCpalBaseColor(
-          Uint8List.fromList(fontBytes),
-          const Color(0xFFFFFFFF),
-        );
-        await loadFontFromList(darkBytes, fontFamily: '${familyName}d');
-
-        // 3. بدون تجويد فاتح: كل الألوان → أسود
-        final ntBytes = _modifyCpalAllColors(
-          Uint8List.fromList(fontBytes),
-          const Color(0xFF000000),
-        );
-        await loadFontFromList(ntBytes, fontFamily: '${familyName}n');
-
-        // 4. بدون تجويد داكن: كل الألوان → أبيض
-        final ntdBytes = _modifyCpalAllColors(
-          Uint8List.fromList(fontBytes),
-          const Color(0xFFFFFFFF),
-        );
-        await loadFontFromList(ntdBytes, fontFamily: '${familyName}nd');
-
-        // 5. أحمر للخلاف (القراءات العشر): كل الألوان → أحمر
-        final nrBytes = _modifyCpalAllColors(
-          Uint8List.fromList(fontBytes),
-          const Color(0xFFFF0000),
-        );
-        await loadFontFromList(nrBytes, fontFamily: '${familyName}nr');
-
+        final fontBytes = await _readPrimaryBytes(page, cacheDir);
+        await _registerFamily(familyName, fontBytes);
         _loadedPages.add(page);
-        // [iqama fork] Notify host of per-page progress. Stays a no-op
-        // when no callback is registered.
         onProgress?.call(_loadedPages.length, _totalPages);
       } catch (e, st) {
         log('QuranFontsService: failed to load font page $page: $e',
@@ -378,6 +376,85 @@ class QuranFontsService {
       }
     });
   }
+
+  /// [iqama fork] Reads the raw decompressed TTF bytes for the
+  /// primary variant of [page] — disk cache first, network fetch
+  /// + decode otherwise. Used by both the bulk loader and the
+  /// on-demand variant generator below.
+  static Future<Uint8List> _readPrimaryBytes(int page, Directory? cacheDir) async {
+    if (cacheDir != null) {
+      final cachedFile = File('${cacheDir.path}/page$page.ttf');
+      if (cachedFile.existsSync()) {
+        return Uint8List.fromList(await cachedFile.readAsBytes());
+      }
+      final bytes = await _decompressForPage(page, cacheDir);
+      try {
+        await cachedFile.writeAsBytes(bytes, flush: true);
+      } catch (e) {
+        log('QuranFontsService: primary cache write failed for page $page: $e',
+            name: 'QuranFontsService');
+      }
+      return bytes;
+    }
+    return _decompressForPage(page, cacheDir);
+  }
+
+  static Future<void> _registerFamily(String family, Uint8List bytes) async {
+    await loadFontFromList(bytes, fontFamily: family);
+    _registeredFamilies.add(family);
+  }
+
+  /// [iqama fork] Ensures the [variant] for [page] is registered
+  /// with Flutter and ready to render. Cheap fast-path when the
+  /// family is already loaded; otherwise reads the variant TTF
+  /// from disk if cached (b), or generates it via CPAL surgery
+  /// from the primary bytes and caches the result.
+  ///
+  /// Renderer / mode-switch handlers call this; the future
+  /// completes once the variant is usable.
+  static Future<void> ensureVariant(int page, FontVariant variant) {
+    final family = variant.familyFor(page);
+    if (_registeredFamilies.contains(family)) return Future.value();
+    return _variantLoadFutures.putIfAbsent(family, () async {
+      try {
+        final cacheDir = await _ensureCacheDir();
+        // (b) Try the on-disk variant cache first.
+        if (cacheDir != null) {
+          final variantFile = File('${cacheDir.path}/$family.ttf');
+          if (variantFile.existsSync()) {
+            final bytes = Uint8List.fromList(await variantFile.readAsBytes());
+            await _registerFamily(family, bytes);
+            return;
+          }
+        }
+
+        // Cache miss → mutate from the primary bytes.
+        final primary = await _readPrimaryBytes(page, cacheDir);
+        final mutated = variant.mutate(primary);
+        await _registerFamily(family, mutated);
+        if (cacheDir != null) {
+          try {
+            await File('${cacheDir.path}/$family.ttf')
+                .writeAsBytes(mutated, flush: true);
+          } catch (e) {
+            log('QuranFontsService: variant cache write failed $family: $e',
+                name: 'QuranFontsService');
+          }
+        }
+      } catch (e, st) {
+        log('QuranFontsService: ensureVariant $family failed: $e',
+            name: 'QuranFontsService', stackTrace: st);
+        // Drop the failed future so the next call retries instead
+        // of hitting an already-resolved-but-incomplete entry.
+        _variantLoadFutures.remove(family);
+      }
+    });
+  }
+
+  /// [iqama fork] True iff the family the renderer wants is already
+  /// registered. Used as a sync check before falling back to the
+  /// primary while the variant generates in the background.
+  static bool isFamilyReady(String family) => _registeredFamilies.contains(family);
 
   /// فك ضغط ملف `.ttf.gz` من الـ assets.
   static Future<Uint8List> _decompressFromAsset(int page) async {
@@ -623,7 +700,9 @@ class QuranFontsService {
           name: 'QuranFontsService');
     }
     _loadedPages.clear();
+    _registeredFamilies.clear();
     _pageLoadFutures.clear();
+    _variantLoadFutures.clear();
     _backgroundLoadFuture = null;
     _cacheDir = null;
     _cacheDirInitialized = false;
@@ -635,4 +714,63 @@ class QuranFontsService {
 class _FontDownloadDeclinedException implements Exception {
   @override
   String toString() => 'Tajweed font download declined by user';
+}
+
+/// [iqama fork] The four derived font variants the renderer can ask
+/// for. The primary (`page${N}`) loads eagerly during bulk download;
+/// these get generated on-demand via [QuranFontsService.ensureVariant]
+/// so a 604-page fresh install doesn't pay 5× the platform-thread
+/// registration cost up-front.
+enum FontVariant {
+  /// Dark mode with tajweed — CPAL base color (black) → white.
+  /// `page${N}d`.
+  dark,
+
+  /// Light mode without tajweed — every CPAL color → black.
+  /// `page${N}n`.
+  noTajweed,
+
+  /// Dark mode without tajweed — every CPAL color → white.
+  /// `page${N}nd`.
+  noTajweedDark,
+
+  /// Red overlay for ten-readings disagreement words — every CPAL
+  /// color → red. `page${N}nr`.
+  red,
+}
+
+extension FontVariantExt on FontVariant {
+  String familyFor(int page) {
+    switch (this) {
+      case FontVariant.dark:          return 'page${page}d';
+      case FontVariant.noTajweed:     return 'page${page}n';
+      case FontVariant.noTajweedDark: return 'page${page}nd';
+      case FontVariant.red:           return 'page${page}nr';
+    }
+  }
+
+  Uint8List mutate(Uint8List primary) {
+    switch (this) {
+      case FontVariant.dark:
+        return QuranFontsService._modifyCpalBaseColor(
+          Uint8List.fromList(primary),
+          const Color(0xFFFFFFFF),
+        );
+      case FontVariant.noTajweed:
+        return QuranFontsService._modifyCpalAllColors(
+          Uint8List.fromList(primary),
+          const Color(0xFF000000),
+        );
+      case FontVariant.noTajweedDark:
+        return QuranFontsService._modifyCpalAllColors(
+          Uint8List.fromList(primary),
+          const Color(0xFFFFFFFF),
+        );
+      case FontVariant.red:
+        return QuranFontsService._modifyCpalAllColors(
+          Uint8List.fromList(primary),
+          const Color(0xFFFF0000),
+        );
+    }
+  }
 }

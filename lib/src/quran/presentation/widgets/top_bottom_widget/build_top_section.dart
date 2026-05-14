@@ -7,6 +7,11 @@ class BuildTopSection extends StatelessWidget {
   final int pageIndex;
   final int? surahNumber;
 
+  /// [iqama fork] Optional host-supplied per-page action (e.g.
+  /// "mark page as read") rendered centred in the header row,
+  /// between the surah name and the juz label.
+  final Widget? pageAction;
+
   BuildTopSection({
     super.key,
     required this.isRight,
@@ -14,6 +19,7 @@ class BuildTopSection extends StatelessWidget {
     this.isSurah = false,
     required this.pageIndex,
     this.surahNumber = 0,
+    this.pageAction,
   });
 
   final surahCtrl = SurahCtrl.instance;
@@ -52,7 +58,15 @@ class BuildTopSection extends StatelessWidget {
                       languageCode: languageCode),
                   style: _getTextStyle(context, juzColor),
                 ),
-                const Spacer(),
+                pageAction != null
+                    // heightFactor: 1 so the Center hugs the button's
+                    // height — without it, Center expands to fill the
+                    // (screen-tall) loose constraints the header gets
+                    // inside the portrait Stack and drags the whole
+                    // row into the page.
+                    ? Expanded(
+                        child: Center(heightFactor: 1, child: pageAction))
+                    : const Spacer(),
                 isSurah
                     ? Text(
                         ' surah${(surahNumber).toString().padLeft(3, '0')} ',
@@ -117,7 +131,15 @@ class BuildTopSection extends StatelessWidget {
                             ),
                           )
                         : const SizedBox.shrink(),
-                const Spacer(),
+                pageAction != null
+                    // heightFactor: 1 so the Center hugs the button's
+                    // height — without it, Center expands to fill the
+                    // (screen-tall) loose constraints the header gets
+                    // inside the portrait Stack and drags the whole
+                    // row into the page.
+                    ? Expanded(
+                        child: Center(heightFactor: 1, child: pageAction))
+                    : const Spacer(),
                 Text(
                   '$effectiveJuzName: ${quranCtrl.getJuzByPage(pageIndex).juz}'
                       .convertNumbersAccordingToLang(
