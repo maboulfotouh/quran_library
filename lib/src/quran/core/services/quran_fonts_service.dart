@@ -145,6 +145,38 @@ class QuranFontsService {
   /// هل تم تحميل جميع الصفحات؟
   static bool get allLoaded => _loadedPages.length >= _totalPages;
 
+  /// [iqama fork] True iff every primary page TTF is sitting in the
+  /// on-disk cache. Hosts use this to skip a progress dialog on
+  /// re-entry when the previous session already finished downloading
+  /// — `allLoaded` returns false on a cold start (the in-memory set
+  /// is empty) even when all 604 files are still on disk from a
+  /// previous run, so this is the correct probe for "is there any
+  /// network work left to do?".
+  static Future<bool> isFullyCachedOnDisk() async {
+    if (kIsWeb) return false;
+    if (allLoaded) return true;
+    final dir = await _ensureCacheDir();
+    if (dir == null) return false;
+    try {
+      // One directory listing instead of 604 existsSync() probes.
+      // Variants (page${N}d.ttf, page${N}n.ttf, …) live in the same
+      // dir but are generated on-demand from the primary; only the
+      // primary TTF matters here.
+      final primary = RegExp(r'^page\d+\.ttf$');
+      var count = 0;
+      for (final entry in dir.listSync(followLinks: false)) {
+        if (entry is File &&
+            primary.hasMatch(entry.uri.pathSegments.last)) {
+          count++;
+          if (count >= _totalPages) return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// اسم عائلة الخط للصفحة المحددة (page1 .. page604).
   static String getFontFamily(int pageIndex) => 'page${pageIndex + 1}';
 
