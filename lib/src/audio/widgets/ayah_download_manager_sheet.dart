@@ -179,9 +179,29 @@ class AyahDownloadManagerSheet extends StatelessWidget {
                                   // instead of the calligraphic
                                   // digit-glyph, which reads as a
                                   // number to anyone not used to
-                                  // mushaf typography.
+                                  // mushaf typography. Also strip
+                                  // the leading "سورة" + whitespace
+                                  // baked into the source JSON's name
+                                  // field; the list is already
+                                  // titled "السور المحملة" so every
+                                  // row repeating "سورة" reads as
+                                  // visual noise + creates a large
+                                  // gap before the actual name.
                                   Text(
-                                    s.arabicName,
+                                    // Match س–و–ر–ة with any combination
+                                    // of harakat between or after them
+                                    // (ً–ْ covers every
+                                    // standard tashkeel: fatha, damma,
+                                    // kasra, fathatan, dammatan,
+                                    // kasratan, shadda, sukun). So
+                                    // "سورة", "سُورَة", and "سُورَةٌ"
+                                    // all strip correctly without
+                                    // touching the harakat on the
+                                    // actual surah name that follows.
+                                    s.arabicName.replaceFirst(
+                                        RegExp(
+                                            r'^س[ً-ْ]*و[ً-ْ]*ر[ً-ْ]*ة[ً-ْ]*\s+'),
+                                        ''),
                                     style: effectiveStyle.surahTitleStyle ??
                                         QuranLibrary().cairoStyle.copyWith(
                                               color: AppColors.getTextColor(dark),
