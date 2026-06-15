@@ -122,6 +122,7 @@ part 'src/quran/presentation/widgets/fonts_download_dialog.dart';
 part 'src/quran/presentation/widgets/fonts_download_widget.dart';
 part 'src/quran/presentation/widgets/jumping_between_pages_widget.dart';
 part 'src/quran/presentation/widgets/page_view_build.dart';
+part 'src/quran/presentation/widgets/quran_hub/floating_top_bar.dart';
 part 'src/quran/presentation/widgets/quran_hub/bookmarks_panel.dart';
 part 'src/quran/presentation/widgets/quran_hub/downloads_panel.dart';
 part 'src/quran/presentation/widgets/quran_hub/index_panel.dart';

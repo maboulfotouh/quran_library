@@ -73,7 +73,29 @@ class QuranLibraryScreen extends StatelessWidget {
     this.wordInfoBottomSheetStyle,
     this.isShowDisplayModeBar = true,
     this.autoScrollStyle,
+    this.useQuranHub = false,
+    this.onBackFromReader,
   });
+
+  /// Opt into the new unified-controls UX:
+  ///
+  ///   - Renders the [QuranFloatingTopBar] as the only chrome.
+  ///   - Hides the legacy default top bar, the
+  ///     `QuranOrTenRecitationsTabBar`, and the right-edge
+  ///     `DisplayModeBar` (they all collapsed into the Hub).
+  ///   - Leaves the bottom audio slider in place, since it's the
+  ///     active playback surface and has no equivalent in the Hub.
+  ///
+  /// Default `false` so existing consumers don't change behaviour
+  /// when they pull this library version. The salah-league-mobile
+  /// QuranScreen flips it to `true` in slice 7.
+  final bool useQuranHub;
+
+  /// Optional back-button override for the floating top bar.
+  /// Consumers wrap their own dismiss logic here when they need
+  /// extra cleanup before the screen pops (e.g. save the current
+  /// page beyond what the QuranCtrl auto-save handles).
+  final VoidCallback? onBackFromReader;
 
   /// إذا قمت بإضافة شريط التطبيقات هنا فإنه سيحل محل شريط التطبيقات الافتراضية [appBar]
   ///
@@ -672,6 +694,8 @@ class QuranLibraryScreen extends StatelessWidget {
                           topBarStyle: topBarStyle,
                           isShowDisplayModeBar: isShowDisplayModeBar,
                           autoScrollStyle: autoScrollStyle,
+                          useQuranHub: useQuranHub,
+                          onBackFromReader: onBackFromReader,
                         ),
                       ],
                     ),
@@ -814,6 +838,8 @@ class _ControlWidget extends StatelessWidget {
     required this.topBarStyle,
     required this.isShowDisplayModeBar,
     required this.autoScrollStyle,
+    required this.useQuranHub,
+    required this.onBackFromReader,
   });
 
   final bool? isShowAudioSlider;
@@ -832,6 +858,8 @@ class _ControlWidget extends StatelessWidget {
   final bool? isShowDisplayModeBar;
   final QuranTopBarStyle? topBarStyle;
   final AutoScrollStyle? autoScrollStyle;
+  final bool useQuranHub;
+  final VoidCallback? onBackFromReader;
 
   @override
   Widget build(BuildContext context) {
@@ -876,40 +904,57 @@ class _ControlWidget extends StatelessWidget {
                             quranCtrl: quranCtrl,
                           )
                         : const SizedBox.shrink(),
-                    appBar == null && useDefaultAppBar && visible
-                        ? _QuranTopBar(
-                            languageCode,
-                            isDark,
-                            style: surahStyle ?? SurahAudioStyle(),
-                            backgroundColor: backgroundColor,
-                            downloadFontsDialogStyle: downloadFontsDialogStyle,
-                            isFontsLocal: isFontsLocal,
-                          )
-                        : const SizedBox.shrink(),
-                    isShowTabBar!
-                        ? Positioned(
-                            top: 70,
-                            child: QuranOrTenRecitationsTabBar(
-                                bgColor: backgroundColor ??
-                                    AppColors.getBackgroundColor(isDark),
-                                defaults: topBarStyle ??
-                                    QuranTopBarStyle.defaults(
-                                        context: context, isDark: isDark),
-                                isDark: isDark),
-                          )
-                        : const SizedBox.shrink(),
-                    // شريط اختيار وضع العرض - يظهر على الجانب
-                    // Display mode selector bar - appears on the side
-                    if (isShowDisplayModeBar!)
-                      Positioned(
-                        right: 8,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: DisplayModeBar(
-                            isDark: isDark,
-                            languageCode: languageCode,
+                    // useQuranHub flips the chrome wholesale:
+                    //   * legacy top bar / tab bar / display-mode
+                    //     bar are suppressed (they collapsed into
+                    //     the Hub),
+                    //   * a single floating pill replaces them and
+                    //     is the only top-of-page chrome.
+                    if (!useQuranHub) ...[
+                      appBar == null && useDefaultAppBar && visible
+                          ? _QuranTopBar(
+                              languageCode,
+                              isDark,
+                              style: surahStyle ?? SurahAudioStyle(),
+                              backgroundColor: backgroundColor,
+                              downloadFontsDialogStyle: downloadFontsDialogStyle,
+                              isFontsLocal: isFontsLocal,
+                            )
+                          : const SizedBox.shrink(),
+                      isShowTabBar!
+                          ? Positioned(
+                              top: 70,
+                              child: QuranOrTenRecitationsTabBar(
+                                  bgColor: backgroundColor ??
+                                      AppColors.getBackgroundColor(isDark),
+                                  defaults: topBarStyle ??
+                                      QuranTopBarStyle.defaults(
+                                          context: context, isDark: isDark),
+                                  isDark: isDark),
+                            )
+                          : const SizedBox.shrink(),
+                      // شريط اختيار وضع العرض - يظهر على الجانب
+                      // Display mode selector bar - appears on the side
+                      if (isShowDisplayModeBar!)
+                        Positioned(
+                          right: 8,
+                          top: 0,
+                          bottom: 0,
+                          child: Center(
+                            child: DisplayModeBar(
+                              isDark: isDark,
+                              languageCode: languageCode,
+                            ),
                           ),
+                        ),
+                    ] else
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: QuranFloatingTopBar(
+                          languageCode: languageCode,
+                          onBack: onBackFromReader,
                         ),
                       ),
                     // شريط التحكم بسرعة السكرول التلقائي — يبقى ظاهرًا بشكل مستقل
