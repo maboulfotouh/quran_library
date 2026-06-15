@@ -151,23 +151,27 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
           }
           _lastFingerprint = fp;
 
-          _cachedWidget = LayoutBuilder(
-            builder: (ctx, constraints) {
-              final fs = isLandscape
-                  ? 100.0
-                  : PageFontSizeHelper.getFontSize(
-                      widget.pageIndex,
-                      ctx,
-                    ).h;
+          // [iqama fork] The previous wrapping `LayoutBuilder` would
+          // run its builder on every layout pass — and with the
+          // outer `FittedBox(BoxFit.scaleDown)` in `PageBuild`, that
+          // can fire twice (intrinsic + actual measure) for every
+          // first-mount of a new page. `PageFontSizeHelper.getFontSize`
+          // / `.h` only need a `BuildContext`, not the layout
+          // constraints, so a regular build path computes them once
+          // and the cached `_buildRichText` widget is reused as-is.
+          final fs = isLandscape
+              ? 100.0
+              : PageFontSizeHelper.getFontSize(
+                  widget.pageIndex,
+                  context,
+                ).h;
 
-              return _buildRichText(
-                wordInfoCtrl,
-                context,
-                fs,
-                withTajweed: withTajweed,
-                isTenRecitations: isTenRecitations,
-              );
-            },
+          _cachedWidget = _buildRichText(
+            wordInfoCtrl,
+            context,
+            fs,
+            withTajweed: withTajweed,
+            isTenRecitations: isTenRecitations,
           );
           return _cachedWidget!;
         },
@@ -192,6 +196,34 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
     final allBookmarksList =
         widget.bookmarks.values.expand((list) => list).toList();
     final ayahBookmarkedSet = widget.ayahBookmarked.toSet();
+
+    // [iqama fork] Pre-compute the values that don't vary across
+    // segments on this line (and would otherwise be recomputed
+    // inside `_qpcV4SpanSegment` once per word). A typical Mushaf
+    // page has ~250 word segments — hoisting these out turns ~250
+    // `getFontPath` lookups + ~250 `Theme.of(context)` walks + ~250
+    // `TextStyle()` allocations into ~1 each, per line.
+    final qctrl = widget.quranCtrl;
+    final pageFontFamily = widget.isFontsLocal
+        ? widget.fontsName
+        : (widget.fontFamilyOverride ??
+            qctrl.getFontPath(widget.pageIndex, isDark: widget.isDark));
+    final pageTextColor =
+        widget.textColor ?? AppColors.getTextColor(widget.isDark);
+    final pageBaseStyle = TextStyle(
+      fontFamily: pageFontFamily,
+      package: widget.fontPackageOverride,
+      fontSize: fs,
+      height: 2,
+      color: pageTextColor,
+    );
+    final pageAyahNumberStyle = TextStyle(
+      fontFamily: 'ayahNumber',
+      fontSize: fs + 5,
+      height: 1.5,
+      package: 'quran_library',
+      color: widget.ayahIconColor ?? Theme.of(context).colorScheme.primary,
+    );
 
     final spans =
         List<InlineSpan>.generate(widget.segments.length, (segmentIndex) {
@@ -264,7 +296,7 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
             externalTafsirStyle: themedTafsirStyle,
           );
         },
-        textColor: widget.textColor ?? (AppColors.getTextColor(widget.isDark)),
+        textColor: pageTextColor,
         ayahIconColor: widget.ayahIconColor,
         allBookmarksList: allBookmarksList,
         bookmarksAyahs: widget.isAyahBookmarked != null
@@ -281,6 +313,11 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
         ayahBookmarked: widget.ayahBookmarked,
         isDark: widget.isDark,
         onPagePress: widget.onPagePress,
+        precomputedFontFamily: pageFontFamily,
+        precomputedBaseStyle: pageBaseStyle,
+        precomputedAyahNumberStyle: pageAyahNumberStyle,
+        precomputedWithTajweed: withTajweed,
+        precomputedIsTenRecitations: isTenRecitations,
       );
 
       final spanStart = charOffset;

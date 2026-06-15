@@ -29,35 +29,63 @@ TextSpan _qpcV4SpanSegment({
   bool usePaintColoring = true,
   required bool isDark,
   VoidCallback? onPagePress,
+  // [iqama fork] Pre-computed per-page styles. When the caller is
+  // batching a whole page's spans it computes these ONCE up front
+  // and reuses them for every word — saves a TextStyle allocation,
+  // a `getFontPath` map lookup, a `Theme.of(context)` walk, and a
+  // `withTajweed`/`isTenRecitations` field read per word. On a page
+  // with ~250 words that's the difference between a smooth swipe
+  // and a 200 ms hitch on mid-end devices.
+  String? precomputedFontFamily,
+  TextStyle? precomputedBaseStyle,
+  TextStyle? precomputedAyahNumberStyle,
+  bool? precomputedWithTajweed,
+  bool? precomputedIsTenRecitations,
 }) {
   final quranCtrl = QuranCtrl.instance;
   final wordInfoCtrl = WordInfoCtrl.instance;
   final AyahModel ayahModel = quranCtrl.getAyahByUq(ayahUQNum);
 
-  final withTajweed = QuranCtrl.instance.state.isTajweedEnabled.value;
-  final isTenRecitations = WordInfoCtrl.instance.isTenRecitations;
+  final withTajweed =
+      precomputedWithTajweed ?? quranCtrl.state.isTajweedEnabled.value;
+  final isTenRecitations =
+      precomputedIsTenRecitations ?? wordInfoCtrl.isTenRecitations;
   final bool forceRed = isWordKhilaf && !withTajweed && isTenRecitations;
 
   // اختيار الخط: كلمات الخلاف تستخدم خط CPAL أحمر بدلاً من foreground Paint
   final String fontFamily;
-  if (fontFamilyOverride != null) {
+  if (forceRed) {
+    // forceRed always wins — the red font is page-specific anyway.
+    fontFamily = quranCtrl.getRedFontPath(pageIndex);
+  } else if (fontFamilyOverride != null) {
     fontFamily = fontFamilyOverride;
   } else if (isFontsLocal) {
     fontFamily = fontsName;
-  } else if (forceRed) {
-    fontFamily = quranCtrl.getRedFontPath(pageIndex);
+  } else if (precomputedFontFamily != null) {
+    fontFamily = precomputedFontFamily;
   } else {
     fontFamily = quranCtrl.getFontPath(pageIndex, isDark: isDark);
   }
 
-  final baseTextStyle = TextStyle(
-    fontFamily: fontFamily,
-    package: fontPackageOverride,
-    fontSize: fontSize,
-    height: 2,
-    // wordSpacing: 50,
-    color: textColor ?? AppColors.getTextColor(isDark),
-  );
+  // Re-use the precomputed style when it matches what we would have
+  // built (same fontFamily) — the `forceRed` and override branches
+  // need a per-word style.
+  final TextStyle baseTextStyle;
+  if (!forceRed &&
+      precomputedBaseStyle != null &&
+      precomputedBaseStyle.fontFamily == fontFamily &&
+      precomputedBaseStyle.fontSize == fontSize) {
+    baseTextStyle = precomputedBaseStyle;
+  } else {
+    baseTextStyle = TextStyle(
+      fontFamily: fontFamily,
+      package: fontPackageOverride,
+      fontSize: fontSize,
+      height: 2,
+      // wordSpacing: 50,
+      color: textColor ?? AppColors.getTextColor(isDark),
+    );
+  }
 
   InlineSpan? tail;
   final hasBookmark = isAyahBookmarked != null
@@ -83,13 +111,16 @@ TextSpan _qpcV4SpanSegment({
             text: usePaintColoring
                 ? '${'$ayahNumber'.convertEnglishNumbersToArabic(ayahNumber.toString())}\u202F\u202F'
                 : '\u202F${'$ayahNumber'.convertEnglishNumbersToArabic(ayahNumber.toString())}\u202F',
-            style: TextStyle(
-              fontFamily: 'ayahNumber',
-              fontSize: usePaintColoring ? (fontSize + 5) : (fontSize + 5),
-              height: 1.5,
-              package: 'quran_library',
-              color: ayahIconColor ?? Theme.of(context).colorScheme.primary,
-            ),
+            // Re-use the page-level ayah-number style when one was
+            // supplied; otherwise build the per-word style as before.
+            style: precomputedAyahNumberStyle ??
+                TextStyle(
+                  fontFamily: 'ayahNumber',
+                  fontSize: usePaintColoring ? (fontSize + 5) : (fontSize + 5),
+                  height: 1.5,
+                  package: 'quran_library',
+                  color: ayahIconColor ?? Theme.of(context).colorScheme.primary,
+                ),
             recognizer: LongPressGestureRecognizer(
                 duration: const Duration(milliseconds: 500))
               ..onLongPressStart = onLongPressStart,
