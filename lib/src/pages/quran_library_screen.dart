@@ -730,7 +730,12 @@ class QuranLibraryScreen extends StatelessWidget {
         autofocus: kIsWeb ? false : true,
         onKeyEvent: (node, event) => quranCtrl.controlRLByKeyboard(node, event),
         child: PatchedPreloadPageView.builder(
-          preloadPagesCount: 2,
+          // 3 instead of 2 — extra page on each side means swiping
+          // forward in a continuous read never hits a not-yet-built
+          // neighbour. The bigger preload is cheap because
+          // QuranFontsService.prewarmPageNeighbourhood has already
+          // made the variant family resident in memory.
+          preloadPagesCount: 3,
           padEnds: false,
           itemCount: 604,
           controller: quranCtrl.getPageController(context),

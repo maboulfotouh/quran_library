@@ -128,6 +128,15 @@ class QuranCtrl extends GetxController {
     // of the default light theme on cold start.
     loadQuranTheme();
 
+    // Background pre-warm of the landing page's 4 font variants
+    // (light/dark × tajweed/noTajweed) and the ±2 neighbour
+    // pages. Cuts the 100–500 ms stall users hit on the first
+    // tajweed toggle or theme cycle on mid / low-end devices.
+    // Detached so it doesn't block the rest of onInit.
+    Future(() => QuranFontsService.prewarmPageNeighbourhood(
+          state.currentPageNumber.value - 1,
+        ));
+
     searchFocusNode = FocusNode();
     searchTextController = TextEditingController();
   }
@@ -639,6 +648,12 @@ class QuranCtrl extends GetxController {
     final isDual = quranPagesController.viewportFraction < 1.0;
     final targetPage = isDual ? page - (page % 2) : page;
     state.currentPageNumber.value = page + 1;
+
+    // Background pre-warm of the destination's variants in case the
+    // jump is far from the current preload window. Detached future
+    // so we don't block the animation. Idempotent — duplicate
+    // ensures coalesce inside QuranFontsService.
+    Future(() => QuranFontsService.prewarmPageNeighbourhood(targetPage));
     // تحقق من المتحكم المحلي أولاً (QuranPagesScreen)
     if (_localPagesController != null && _localPagesController!.hasClients) {
       final localIndex = targetPage - _localPagesOffset;

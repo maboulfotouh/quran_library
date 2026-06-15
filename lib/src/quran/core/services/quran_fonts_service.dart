@@ -488,6 +488,40 @@ class QuranFontsService {
   /// primary while the variant generates in the background.
   static bool isFamilyReady(String family) => _registeredFamilies.contains(family);
 
+  /// [iqama fork] Pre-warm every font variant (dark + noTajweed +
+  /// noTajweedDark + red) for the user's landing page and its
+  /// [radius] neighbours. Slashes the first-toggle stall users
+  /// hit when they flip tajweed off, or when the reader's theme
+  /// switches from light to dark, since the variant generation
+  /// (a heavy CPAL byte mutation) happens in the background well
+  /// before the renderer asks for the family.
+  ///
+  /// **Layered.** Page [pageIndex] is warmed first, then ±1,
+  /// then ±2. So even if pre-warming the whole window takes a
+  /// few hundred ms, the user's immediate view is ready early.
+  ///
+  /// **Idempotent.** Internally calls [ensureVariant], which
+  /// guards via `_registeredFamilies` and `_variantLoadFutures`
+  /// — repeated calls to this method are cheap once the data is
+  /// already in memory.
+  static Future<void> prewarmPageNeighbourhood(
+    int pageIndex, {
+    int radius = 2,
+  }) async {
+    for (int offset = 0; offset <= radius; offset++) {
+      final pages = offset == 0
+          ? [pageIndex]
+          : [pageIndex - offset, pageIndex + offset];
+      // Variants for this layer in parallel — they share work via
+      // _variantLoadFutures so concurrent calls coalesce.
+      await Future.wait([
+        for (final p in pages)
+          if (p >= 0 && p <= 603)
+            for (final v in FontVariant.values) ensureVariant(p + 1, v),
+      ]);
+    }
+  }
+
   /// فك ضغط ملف `.ttf.gz` من الـ assets.
   static Future<Uint8List> _decompressFromAsset(int page) async {
     final data = await rootBundle.load(_assetPath(page));
