@@ -68,6 +68,7 @@ part 'src/quran/data/models/quran_fonts_models/download_fonts_dialog_style.dart'
 part 'src/quran/data/models/quran_fonts_models/sajda_model.dart';
 part 'src/quran/data/models/quran_page.dart';
 part 'src/quran/data/models/quran_recitation.dart';
+part 'src/quran/data/models/quran_theme_mode.dart';
 part 'src/quran/data/models/styles_models/auto_scroll_style.dart';
 part 'src/quran/data/models/styles_models/ayah_menu_style.dart';
 part 'src/quran/data/models/styles_models/ayah_tafsir_inline_style.dart';

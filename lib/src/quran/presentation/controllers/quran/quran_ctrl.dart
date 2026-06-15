@@ -122,9 +122,51 @@ class QuranCtrl extends GetxController {
     // Load saved display mode
     loadSavedDisplayMode();
 
+    // Hydrate the Quran-only theme (light / dark / sepia) from
+    // storage. Done synchronously so the first page render picks
+    // the right palette and font isDark variant, avoiding a flash
+    // of the default light theme on cold start.
+    loadQuranTheme();
+
     searchFocusNode = FocusNode();
     searchTextController = TextEditingController();
   }
+
+  /// Reads the persisted Quran-only theme from GetStorage and writes
+  /// it into `state.quranTheme`. Falls back to [QuranThemeMode.light]
+  /// when storage is empty or holds an unknown value.
+  void loadQuranTheme() {
+    final raw = GetStorage().read(QuranThemeStorage.key);
+    state.quranTheme.value =
+        QuranThemeStorage.decode(raw) ?? QuranThemeMode.light;
+  }
+
+  /// Switches the Quran-only theme to [mode] and persists it.
+  /// Widgets listening to `state.quranTheme` rebuild with the new
+  /// palette on the next frame; the font pipeline picks up the
+  /// new `isDark` value the next time it resolves a family.
+  Future<void> setQuranTheme(QuranThemeMode mode) async {
+    if (state.quranTheme.value == mode) return;
+    state.quranTheme.value = mode;
+    await GetStorage().write(QuranThemeStorage.key, QuranThemeStorage.encode(mode));
+  }
+
+  /// One-tap cycle for the floating top-bar theme icon — moves
+  /// Light → Dark → Sepia → Light. Mirrors how the user is
+  /// expected to interact with the chrome's brightness button.
+  Future<void> cycleQuranTheme() async {
+    final next = switch (state.quranTheme.value) {
+      QuranThemeMode.light => QuranThemeMode.dark,
+      QuranThemeMode.dark  => QuranThemeMode.sepia,
+      QuranThemeMode.sepia => QuranThemeMode.light,
+    };
+    await setQuranTheme(next);
+  }
+
+  /// Convenience accessor for the active palette — saves consumers
+  /// from chaining `state.quranTheme.value.palette`.
+  QuranThemePalette get currentPalette =>
+      state.quranTheme.value.palette;
 
   Future<void> ensureCoreDataLoaded() async {
     if (state.pages.isNotEmpty && state.allAyahs.isNotEmpty) return;

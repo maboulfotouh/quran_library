@@ -40,6 +40,16 @@ class QuranState {
   /// Current display mode
   Rx<QuranDisplayMode> displayMode = QuranDisplayMode.defaultMode.obs;
 
+  /// Quran-only theme — Light / Dark / Sepia. Independent of the
+  /// host app's themeMode so a user can read in sepia even when the
+  /// rest of the app is dark. Hydrated from GetStorage at controller
+  /// init via [QuranCtrl.loadQuranTheme]; widgets read through the
+  /// reactive `value` so a flip reskins the whole reader.
+  ///
+  /// See [QuranThemeMode] for the enum and [QuranThemePalette] for
+  /// the concrete colour tokens that each mode resolves to.
+  Rx<QuranThemeMode> quranTheme = QuranThemeMode.light.obs;
+
   // ملاحظة: تم إزالة GlobalKey<ScaffoldState> لتجنب التعارض مع التطبيقات الأخرى
   // Note: GlobalKey<ScaffoldState> has been removed to avoid conflicts with other applications
 
@@ -56,6 +66,7 @@ class QuranState {
     fontsReady.close();
     fontsLoadProgress.close();
     displayMode.close();
+    quranTheme.close();
     quranPageRLFocusNode.dispose();
   }
 }
