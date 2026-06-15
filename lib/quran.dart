@@ -126,6 +126,7 @@ part 'src/quran/presentation/widgets/quran_hub/ayah_action_sheet.dart';
 part 'src/quran/presentation/widgets/quran_hub/bookmark_color_sheet.dart';
 part 'src/quran/presentation/widgets/quran_hub/floating_top_bar.dart';
 part 'src/quran/presentation/widgets/quran_hub/inline_tafsir_sheet.dart';
+part 'src/quran/presentation/widgets/quran_hub/onboarding_overlay.dart';
 part 'src/quran/presentation/widgets/quran_hub/bookmarks_panel.dart';
 part 'src/quran/presentation/widgets/quran_hub/downloads_panel.dart';
 part 'src/quran/presentation/widgets/quran_hub/index_panel.dart';
