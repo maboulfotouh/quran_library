@@ -857,9 +857,18 @@ class QuranLibraryScreen extends StatelessWidget {
       if (quranCtrl.state.fontsSelected.value == 0) {
         // جدولة تحضير QPC v4 بعد خمول حتى لا ينافس أثناء التقليب.
         quranCtrl.scheduleQpcV4AllPagesPrebuild();
-        // تحميل كسول: تأكد من جاهزية الصفحات القريبة من الصفحة الحالية
-        // QuranFontsService.ensurePagesLoaded(pageIndex + 1, radius: 3);
       }
+
+      // [iqama fork] Pre-warm the new page's font-variant
+      // neighbourhood so the renderer never has to fall back to the
+      // primary family on a subsequent swipe. Without this the
+      // pre-warm only runs once for the LANDING page (in onInit) —
+      // anything 3+ pages away from the cold-start position would
+      // render with the primary (tajweed-coloured) variant for the
+      // few hundred ms `ensureVariant` took, even when tajweed was
+      // toggled off. Detached future + idempotent inside the service,
+      // so duplicate triggers are cheap.
+      Future(() => QuranFontsService.prewarmPageNeighbourhood(pageIndex));
     });
   }
 }
