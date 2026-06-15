@@ -96,6 +96,13 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
     // تغيّر بيانات القراءات (عند اكتمال prewarm)
     final recitationsRevisionHash =
         WordInfoCtrl.instance.recitationsDataRevision.hashCode;
+    // [iqama fork] Bumps every time a new font family registers.
+    // Without it the cached widget keeps rendering the primary
+    // family even after the dark / no-tajweed variant for this
+    // page finishes loading — visible as "first light → dark
+    // switch leaves the glyphs black" until the user cycles
+    // themes again. See QuranFontsService.fontsRevision.
+    final fontsRevisionHash = QuranFontsService.fontsRevision.hashCode;
 
     return Object.hash(
         selHash,
@@ -107,6 +114,7 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
         wordSelectedHash,
         tenRecHash,
         recitationsRevisionHash,
+        fontsRevisionHash,
         overrideHash);
   }
 

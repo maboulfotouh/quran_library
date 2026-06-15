@@ -121,6 +121,18 @@ class QuranFontsService {
   /// the primary while the variant generates in the background.
   static final Set<String> _registeredFamilies = {};
 
+  /// [iqama fork] Monotonically incremented every time a new family
+  /// is registered. The rich-text-line caches its built widget per a
+  /// fingerprint of inputs; including this counter in that
+  /// fingerprint guarantees the cache invalidates the moment a
+  /// previously-unavailable variant comes online. Without it, the
+  /// very first switch from light → dark would render with the
+  /// primary (black-tajweed) family forever, because the cached
+  /// widget was built while the dark variant was still in flight and
+  /// the fingerprint had nothing else that changed once it landed.
+  static int _fontsRevision = 0;
+  static int get fontsRevision => _fontsRevision;
+
   /// Futures لمنع تكرار تحميل نفس الصفحة عند الاستدعاء المتزامن.
   static final Map<int, Future<void>> _pageLoadFutures = {};
 
@@ -433,7 +445,8 @@ class QuranFontsService {
 
   static Future<void> _registerFamily(String family, Uint8List bytes) async {
     await loadFontFromList(bytes, fontFamily: family);
-    _registeredFamilies.add(family);
+    final wasNew = _registeredFamilies.add(family);
+    if (wasNew) _fontsRevision++;
   }
 
   /// [iqama fork] Ensures the [variant] for [page] is registered
