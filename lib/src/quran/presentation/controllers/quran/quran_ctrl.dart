@@ -142,12 +142,14 @@ class QuranCtrl extends GetxController {
   }
 
   /// Reads the persisted Quran-only theme from GetStorage and writes
-  /// it into `state.quranTheme`. Falls back to [QuranThemeMode.light]
-  /// when storage is empty or holds an unknown value.
+  /// it into `state.quranTheme`. Falls back to [QuranThemeMode.sepia]
+  /// when storage is empty or holds an unknown value — sepia is the
+  /// kinder default for long-form reading and gives new users a
+  /// "feels like a printed Mushaf" entry point.
   void loadQuranTheme() {
     final raw = GetStorage().read(QuranThemeStorage.key);
     state.quranTheme.value =
-        QuranThemeStorage.decode(raw) ?? QuranThemeMode.light;
+        QuranThemeStorage.decode(raw) ?? QuranThemeMode.sepia;
   }
 
   /// Switches the Quran-only theme to [mode] and persists it.
