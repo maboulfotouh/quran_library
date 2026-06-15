@@ -694,7 +694,12 @@ class QuranLibraryScreen extends StatelessWidget {
                                   );
                                 case QuranDisplayMode.defaultMode:
                                   return _buildDefaultPageView(
-                                      context, quranCtrl, languageCode);
+                                    context,
+                                    quranCtrl,
+                                    languageCode,
+                                    effectiveIsDark: isDark,
+                                    effectiveTextColor: textColor,
+                                  );
                               }
                             }),
                           ),
@@ -745,8 +750,19 @@ class QuranLibraryScreen extends StatelessWidget {
   }
 
   /// بناء عرض الصفحة الافتراضي (PageView أو صفحة واحدة بدون سحب)
+  ///
+  /// Accepts [effectiveIsDark] and [effectiveTextColor] explicitly
+  /// instead of reading from `this.isDark` / `this.textColor`. When
+  /// `useQuranHub` is on, the build's reactive Obx swaps these for
+  /// the Quran-only theme's values so the page text colour follows
+  /// the Light → Dark → Sepia cycle.
   Widget _buildDefaultPageView(
-      BuildContext context, QuranCtrl quranCtrl, String languageCode) {
+      BuildContext context,
+      QuranCtrl quranCtrl,
+      String languageCode, {
+    required bool effectiveIsDark,
+    required Color? effectiveTextColor,
+  }) {
     if (withPageView) {
       return Focus(
         focusNode: quranCtrl.state.quranPageRLFocusNode,
@@ -775,7 +791,7 @@ class QuranLibraryScreen extends StatelessWidget {
             languageCode: languageCode,
             bookmarkList: bookmarkList,
             ayahSelectedFontColor: ayahSelectedFontColor,
-            textColor: textColor,
+            textColor: effectiveTextColor,
             ayahIconColor: ayahIconColor,
             showAyahBookmarkedIcon: showAyahBookmarkedIcon,
             onAyahLongPress: onAyahLongPress,
@@ -787,7 +803,7 @@ class QuranLibraryScreen extends StatelessWidget {
             onSurahBannerPress: onSurahBannerPress,
             surahNumber: surahNumber,
             ayahSelectedBackgroundColor: ayahSelectedBackgroundColor,
-            isDark: isDark,
+            isDark: effectiveIsDark,
             fontsName: fontsName,
             ayahBookmarked: ayahBookmarked,
             isAyahBookmarked: isAyahBookmarked,
@@ -805,7 +821,7 @@ class QuranLibraryScreen extends StatelessWidget {
       languageCode: languageCode,
       bookmarkList: bookmarkList,
       ayahSelectedFontColor: ayahSelectedFontColor,
-      textColor: textColor,
+      textColor: effectiveTextColor,
       ayahIconColor: ayahIconColor,
       showAyahBookmarkedIcon: showAyahBookmarkedIcon,
       onAyahLongPress: onAyahLongPress,
@@ -817,7 +833,7 @@ class QuranLibraryScreen extends StatelessWidget {
       onSurahBannerPress: onSurahBannerPress,
       surahNumber: surahNumber,
       ayahSelectedBackgroundColor: ayahSelectedBackgroundColor,
-      isDark: isDark,
+      isDark: effectiveIsDark,
       fontsName: fontsName,
       ayahBookmarked: ayahBookmarked,
       isAyahBookmarked: isAyahBookmarked,
