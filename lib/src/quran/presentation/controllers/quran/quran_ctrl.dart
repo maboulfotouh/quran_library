@@ -137,6 +137,17 @@ class QuranCtrl extends GetxController {
           state.currentPageNumber.value - 1,
         ));
 
+    // [iqama fork] Eagerly build QPC v4 layout blocks for the
+    // landing page's forward neighbourhood. Without this the bulk
+    // prebuild waits 2 s of idle time (`scheduleQpcV4AllPagesPrebuild`),
+    // and any user who lands on the reader and starts swiping
+    // within those 2 s pays the cache-miss spinner on every new
+    // page. Doing the forward-biased pre-warm right here means the
+    // first 5 forward swipes after open are already covered.
+    Future(() => prewarmQpcV4Pages(
+          state.currentPageNumber.value - 1,
+        ));
+
     searchFocusNode = FocusNode();
     searchTextController = TextEditingController();
   }
@@ -472,33 +483,69 @@ class QuranCtrl extends GetxController {
     return result;
   }
 
-  Future<void> prewarmQpcV4Pages(int pageIndex) async {
+  /// [iqama fork] Pre-warms QPC v4 layout blocks for a window around
+  /// [pageIndex]. The window is **forward-biased** because users read
+  /// the Mushaf left-to-page-2, page-3 …; pre-warming +5 ahead but
+  /// only -1 behind gives the next handful of forward swipes already-
+  /// built blocks without burning CPU on pages the user just came
+  /// from (those are still kept-alive in the PageView's widget
+  /// cache).
+  ///
+  /// Yields back to the event loop between each page build so the
+  /// wider window doesn't translate into a single stalled frame on
+  /// mid-end devices. Idempotent — skips pages whose blocks are
+  /// already cached.
+  ///
+  /// The `update(['qpc_page_…'])` notifications are sent ONLY for
+  /// pages that:
+  ///   1. Actually had to be built this call, AND
+  ///   2. Aren't the currently-visible page.
+  ///
+  /// Sending it for the visible page would trigger a redundant
+  /// rebuild of an already-correct widget; sending it for off-screen
+  /// pages that haven't been mounted yet is harmless because
+  /// `GetBuilder` only listens when its widget is in the tree.
+  Future<void> prewarmQpcV4Pages(
+    int pageIndex, {
+    int forwardRadius = 5,
+    int backwardRadius = 1,
+  }) async {
     if (!isQpcV4Enabled) return;
     await _ensureQpcV4AssetsLoaded();
-    if (_qpcV4PageRenderer == null) return;
+    final renderer = _qpcV4PageRenderer;
+    if (renderer == null) return;
 
     final basePage = pageIndex + 1;
-    final candidates = <int>{
-      basePage,
-      basePage - 1,
-      basePage + 1,
-      basePage - 2,
-      basePage + 2,
-    }.where((p) => p >= 1 && p <= 604);
+    final currentPage = state.currentPageNumber.value;
+    // Walk the window in proximity order so the nearest forward
+    // neighbour is built FIRST — the most likely next-swipe target
+    // gets blocks the soonest even if the user starts swiping
+    // before the whole window finishes.
+    final ordered = <int>[];
+    for (int offset = 1; offset <= forwardRadius; offset++) {
+      ordered.add(basePage + offset);
+      if (offset <= backwardRadius) ordered.add(basePage - offset);
+    }
+    ordered.add(basePage);
 
-    var didBuildAny = false;
-    for (final p in candidates) {
+    final built = <int>[];
+    for (final p in ordered) {
+      if (p < 1 || p > 604) continue;
       if (_qpcV4BlocksByPage.containsKey(p)) continue;
-      _qpcV4BlocksByPage[p] = _qpcV4PageRenderer!.buildPage(pageNumber: p);
-      didBuildAny = true;
+      _qpcV4BlocksByPage[p] = renderer.buildPage(pageNumber: p);
+      built.add(p);
+      // Yield between page builds so the gesture / animation
+      // pipeline never sees a multi-frame stall when the window
+      // is large (5 forward × ~2 ms each on a mid-end device).
+      await Future<void>.delayed(Duration.zero);
     }
 
-    if (didBuildAny) {
-      // تحديث الصفحات المعنيّة فقط (بدل update() الذي يُعيد بناء الكل)
-      update([
-        for (final p in candidates) 'qpc_page_${p - 1}',
-      ]);
-    }
+    if (built.isEmpty) return;
+    final notifyIds = <String>[
+      for (final p in built)
+        if (p != currentPage) 'qpc_page_${p - 1}',
+    ];
+    if (notifyIds.isNotEmpty) update(notifyIds);
   }
 
   void junpTolastPage() {

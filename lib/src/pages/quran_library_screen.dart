@@ -769,12 +769,14 @@ class QuranLibraryScreen extends StatelessWidget {
         autofocus: kIsWeb ? false : true,
         onKeyEvent: (node, event) => quranCtrl.controlRLByKeyboard(node, event),
         child: PatchedPreloadPageView.builder(
-          // 3 instead of 2 — extra page on each side means swiping
-          // forward in a continuous read never hits a not-yet-built
-          // neighbour. The bigger preload is cheap because
-          // QuranFontsService.prewarmPageNeighbourhood has already
-          // made the variant family resident in memory.
-          preloadPagesCount: 3,
+          // 4 instead of 3 — together with the eager QPC block
+          // pre-warm (see _onPageChange / prewarmQpcV4Pages) this
+          // means by the time the user's gesture lands on a
+          // "new" page, both the layout data AND the constructed
+          // widget tree are already resident. The cost is the
+          // upfront memory for those extra widgets, which is
+          // bounded by the page's _KeepAlive subtree.
+          preloadPagesCount: 4,
           padEnds: false,
           itemCount: 604,
           controller: quranCtrl.getPageController(context),
@@ -858,6 +860,25 @@ class QuranLibraryScreen extends StatelessWidget {
         // جدولة تحضير QPC v4 بعد خمول حتى لا ينافس أثناء التقليب.
         quranCtrl.scheduleQpcV4AllPagesPrebuild();
       }
+
+      // [iqama fork] Pre-warm the next pages' QPC layout blocks so
+      // the FIRST forward swipe onto them lands on already-built
+      // blocks instead of triggering the cache-miss → spinner →
+      // reactive prewarm cycle. Without this, every "new" page felt
+      // laggy on a mid-end device because PageBuild had to short-
+      // circuit to a CircularProgressIndicator while the layout was
+      // generated, then rebuild once the data arrived.
+      //
+      // Backward swipes always felt smooth because the previously-
+      // visited pages stayed cached in `_qpcV4BlocksByPage` AND in
+      // the PageView's `_KeepAlive` widget cache — only the first
+      // visit to each new page paid the build cost.
+      //
+      // Forward-biased radius (+5/-1) mirrors how the Mushaf is
+      // actually read. Detached future + chunked yields inside the
+      // controller keep the wider window from stalling the gesture
+      // pipeline.
+      Future(() => quranCtrl.prewarmQpcV4Pages(pageIndex));
 
       // [iqama fork] Pre-warm the new page's font-variant
       // neighbourhood so the renderer never has to fall back to the
