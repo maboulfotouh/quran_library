@@ -268,19 +268,28 @@ class _AyahLabel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          // A 2-line preview of the ayah text so the user has a
-          // little context for "is this the ayah I tapped?".
-          Text(
-            ayah.text,
-            textAlign: TextAlign.right,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: fontFamily,
-              package: 'quran_library',
-              fontSize: 19,
-              color: palette.ink,
-              height: 1.75,
+          // Render the FULL ayah, not a 2-line preview — users
+          // tapping an ayah expect to see the whole thing so they
+          // can confirm "yes, this is the one". Bound by the screen
+          // height so that very long ayahs (e.g. 2:282, the longest
+          // in the Mushaf) get an internal scroll instead of pushing
+          // the action row off-screen.
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+            ),
+            child: SingleChildScrollView(
+              child: Text(
+                ayah.text,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontFamily: fontFamily,
+                  package: 'quran_library',
+                  fontSize: 19,
+                  color: palette.ink,
+                  height: 1.75,
+                ),
+              ),
             ),
           ),
         ],
