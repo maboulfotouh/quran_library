@@ -68,12 +68,18 @@ class AyahsAudioWidget extends StatelessWidget {
                       children: [
                         // ====== Handle للسحب ======
                         // ====== Drag Handle ======
+                        // Picks up an opaque colour from the active
+                        // style so a sepia / dark theme isn't stuck
+                        // with a stray cool-grey handle from the
+                        // legacy palette.
                         Container(
                           width: 70,
-                          height: 8,
+                          height: 6,
                           margin: const EdgeInsets.only(top: 8),
                           decoration: BoxDecoration(
-                            color: Colors.grey,
+                            color: (effectiveStyle.seekBarInactiveTrackColor ??
+                                    Colors.grey)
+                                .withValues(alpha: 0.8),
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),

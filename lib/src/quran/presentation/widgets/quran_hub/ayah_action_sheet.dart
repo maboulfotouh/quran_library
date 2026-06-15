@@ -246,6 +246,13 @@ class _AyahLabel extends StatelessWidget {
         : (isAr
             ? 'الآية ${ayah.ayahNumber} · صفحة ${ayah.page}'
             : 'Ayah ${ayah.ayahNumber} · Page ${ayah.page}');
+    // Render the preview in the page's actual Quran font so the
+    // glyphs look the same as on the page the user tapped — the
+    // default system font for Arabic was unrecognisable as
+    // "this is the ayah I just picked".
+    final fontFamily = QuranCtrl.instance
+        .getFontPath(ayah.page - 1,
+            isDark: QuranCtrl.instance.state.quranTheme.value.isDark);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       child: Column(
@@ -269,9 +276,11 @@ class _AyahLabel extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 15,
+              fontFamily: fontFamily,
+              package: 'quran_library',
+              fontSize: 19,
               color: palette.ink,
-              height: 1.65,
+              height: 1.75,
             ),
           ),
         ],

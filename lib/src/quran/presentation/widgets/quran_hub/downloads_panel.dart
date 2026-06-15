@@ -28,6 +28,24 @@ class QuranHubDownloadsPanel extends StatelessWidget {
 
   bool get _isAr => languageCode == 'ar';
 
+  void _showReaderPicker(
+    BuildContext context,
+    QuranThemePalette palette,
+    bool isAr,
+    AudioCtrl audio,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0x66000000),
+      builder: (_) => _ReaderPickerSheet(
+        palette: palette,
+        isAr: isAr,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = this.palette;
@@ -69,6 +87,9 @@ class QuranHubDownloadsPanel extends StatelessWidget {
                 // in both languages — there's no English name in
                 // the data layer to fall back to.
                 readerName: reader?.name,
+                onChange: () => _showReaderPicker(
+                  context, palette, _isAr, audio,
+                ),
               ),
               Divider(height: 1, color: palette.divider),
               Expanded(
@@ -109,61 +130,238 @@ class _ReaderBanner extends StatelessWidget {
   final QuranThemePalette palette;
   final bool isAr;
   final String? readerName;
+  final VoidCallback onChange;
 
   const _ReaderBanner({
     required this.palette,
     required this.isAr,
     required this.readerName,
+    required this.onChange,
   });
 
   @override
   Widget build(BuildContext context) {
     final name = readerName ?? '—';
+    return InkWell(
+      onTap: onChange,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(
+                    palette.accent.withValues(alpha: 0.12), palette.surface),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.headphones_rounded,
+                  color: palette.accent, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isAr ? 'القارئ الحالي' : 'Current reader',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: palette.subInk,
+                      letterSpacing: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    name,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: palette.ink,
+                      letterSpacing: -0.1,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(
+                    palette.accent.withValues(alpha: 0.12), palette.surface),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: palette.accent.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.swap_horiz_rounded,
+                      size: 14, color: palette.accent),
+                  const SizedBox(width: 4),
+                  Text(
+                    isAr ? 'تغيير' : 'Change',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: palette.accent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet listing every available ayah reader. Tap one →
+/// set [SurahState.ayahReaderIndex] + persist to GetStorage so the
+/// next download flow picks up the new voice. Closes itself on
+/// pick, [QuranHubDownloadsPanel]'s Obx rebuilds the banner with
+/// the new name and the per-row download states refresh against
+/// the new reader's directory.
+class _ReaderPickerSheet extends StatelessWidget {
+  final QuranThemePalette palette;
+  final bool isAr;
+
+  const _ReaderPickerSheet({
+    required this.palette,
+    required this.isAr,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final readers = ReadersConstants.activeAyahReaders;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Row(
-        children: [
-          Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: Color.alphaBlend(
-                  palette.accent.withValues(alpha: 0.12), palette.surface),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.headphones_rounded,
-                color: palette.accent, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  isAr ? 'القارئ الحالي' : 'Current reader',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: palette.subInk,
-                    letterSpacing: 1.3,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        decoration: BoxDecoration(
+          color: palette.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 8),
+              child: Center(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: palette.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: palette.ink,
-                    letterSpacing: -0.1,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+              child: Row(
+                children: [
+                  Text(
+                    isAr ? 'اختر القارئ' : 'Pick a reader',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: palette.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: palette.divider),
+            Flexible(
+              child: Obx(() {
+                final audio = AudioCtrl.instance;
+                final current = audio.state.ayahReaderIndex.value;
+                return ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: readers.length,
+                  separatorBuilder: (_, __) => Divider(
+                    height: 1, color: palette.divider,
+                    indent: 56, endIndent: 16,
+                  ),
+                  itemBuilder: (_, i) {
+                    final r = readers[i];
+                    final isSelected = i == current;
+                    return InkWell(
+                      onTap: () {
+                        audio.state.ayahReaderIndex.value = i;
+                        GetStorage().write(
+                            StorageConstants.ayahReaderIndex, i);
+                        Navigator.of(context).maybePop();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 28, height: 28,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? palette.accent
+                                    : Color.alphaBlend(
+                                        palette.accent
+                                            .withValues(alpha: 0.10),
+                                        palette.surface),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isSelected
+                                    ? Icons.check_rounded
+                                    : Icons.headphones_rounded,
+                                size: 14,
+                                color: isSelected
+                                    ? Colors.white
+                                    : palette.accent,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                r.name,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                  color: isSelected
+                                      ? palette.accent
+                                      : palette.ink,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }),
+            ),
+          ],
+        ),
       ),
     );
   }

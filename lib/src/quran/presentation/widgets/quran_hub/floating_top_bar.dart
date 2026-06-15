@@ -60,72 +60,91 @@ class QuranFloatingTopBar extends StatelessWidget {
                 left: 10,
                 right: 10,
               ),
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  // Eat taps on the empty pill area so a user trying
-                  // to read the page-number label can't accidentally
-                  // collapse the chrome with a stray tap.
-                  onTap: () {},
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: palette.surface,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: palette.divider),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 14,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _PillIconButton(
-                          palette: palette,
-                          icon: _isAr
-                              ? Icons.arrow_forward_rounded
-                              : Icons.arrow_back_rounded,
-                          tooltip: _isAr ? 'رجوع' : 'Back',
-                          onTap: onBack ??
-                              () => Navigator.of(context).maybePop(),
-                        ),
-                        const SizedBox(width: 2),
-                        _PageLabel(
-                          palette: palette,
-                          languageCode: languageCode,
-                          isAr: _isAr,
-                          onTap: () => QuranHubSheet.show(
-                            context,
-                            languageCode: languageCode,
-                            initialTab: QuranHubTab.surahs,
+              // Two pills: an obvious labelled Exit pill on the
+              // start side (back arrow was too easily confused with
+              // the Hub button before — labelling it ends the
+              // ambiguity), and the controls pill on the end side.
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ExitPill(
+                    palette: palette,
+                    label: _isAr ? 'خروج من المصحف' : 'Exit Quran',
+                    onTap: onBack ?? () => Navigator.of(context).maybePop(),
+                  ),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    // Eat taps on the gap between buttons so a user
+                    // trying to read the page number can't
+                    // accidentally collapse the chrome.
+                    onTap: () {},
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: palette.surface,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: palette.divider),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
-                        const SizedBox(width: 2),
-                        _ThemeCycleButton(
-                          palette: palette,
-                          currentMode: ctrl.state.quranTheme.value,
-                          onTap: ctrl.cycleQuranTheme,
-                        ),
-                        const SizedBox(width: 2),
-                        _PillIconButton(
-                          palette: palette,
-                          icon: Icons.tune_rounded,
-                          tooltip: _isAr ? 'الإعدادات والفهرس' : 'Hub',
-                          onTap: () => QuranHubSheet.show(
-                            context,
+                        ],
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _PageLabel(
+                            palette: palette,
                             languageCode: languageCode,
+                            isAr: _isAr,
+                            onTap: () => QuranHubSheet.show(
+                              context,
+                              languageCode: languageCode,
+                              initialTab: QuranHubTab.surahs,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 2),
+                          _ThemeCycleButton(
+                            palette: palette,
+                            currentMode: ctrl.state.quranTheme.value,
+                            onTap: ctrl.cycleQuranTheme,
+                          ),
+                          const SizedBox(width: 2),
+                          // Tajweed quick toggle — same surface the
+                          // Settings panel exposes but reachable in
+                          // one tap. Highlighted when ON.
+                          _TajweedQuickToggle(
+                            palette: palette,
+                            isOn: ctrl.state.isTajweedEnabled.value,
+                            isAr: _isAr,
+                            onTap: () {
+                              final next = !ctrl.state.isTajweedEnabled.value;
+                              ctrl.state.isTajweedEnabled.value = next;
+                              GetStorage()
+                                  .write(_StorageConstants().isTajweed, next);
+                              // ignore: invalid_use_of_protected_member
+                              ctrl.update(['fonts', '_pageViewBuild']);
+                            },
+                          ),
+                          const SizedBox(width: 2),
+                          _PillIconButton(
+                            palette: palette,
+                            icon: Icons.tune_rounded,
+                            tooltip: _isAr ? 'الإعدادات والفهرس' : 'Hub',
+                            onTap: () => QuranHubSheet.show(
+                              context,
+                              languageCode: languageCode,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
@@ -285,6 +304,123 @@ class _ThemeCycleButton extends StatelessWidget {
       icon: _icon,
       tooltip: _tooltip(isAr),
       onTap: onTap,
+    );
+  }
+}
+
+/// The labelled exit pill on the start side. Separate from the
+/// controls pill so the back gesture isn't confused with the Hub
+/// open. The label is explicit ("Exit Quran" / "خروج من المصحف")
+/// so even a first-time user understands what tapping it does.
+class _ExitPill extends StatelessWidget {
+  final QuranThemePalette palette;
+  final String label;
+  final VoidCallback onTap;
+
+  const _ExitPill({
+    required this.palette,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isAr = Directionality.of(context) == TextDirection.rtl;
+    return Material(
+      color: palette.surface,
+      borderRadius: BorderRadius.circular(999),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: palette.divider),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isAr
+                    ? Icons.arrow_forward_rounded
+                    : Icons.arrow_back_rounded,
+                size: 16,
+                color: palette.ink,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: palette.ink,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Quick toggle for tajweed colouring in the controls pill. The
+/// icon (a paint-brush) flips to the active accent colour when
+/// tajweed is on, the inactive ink when it's off — readable at a
+/// glance.
+class _TajweedQuickToggle extends StatelessWidget {
+  final QuranThemePalette palette;
+  final bool isOn;
+  final bool isAr;
+  final VoidCallback onTap;
+
+  const _TajweedQuickToggle({
+    required this.palette,
+    required this.isOn,
+    required this.isAr,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: isOn
+          ? (isAr ? 'إيقاف تلوين التجويد' : 'Turn tajweed off')
+          : (isAr ? 'تشغيل تلوين التجويد' : 'Turn tajweed on'),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 22,
+          child: Container(
+            margin: const EdgeInsets.all(2),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isOn
+                  ? Color.alphaBlend(
+                      palette.accent.withValues(alpha: 0.18), palette.surface)
+                  : Colors.transparent,
+            ),
+            child: Icon(
+              Icons.brush_rounded,
+              size: 18,
+              color: isOn ? palette.accent : palette.ink,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

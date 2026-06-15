@@ -405,7 +405,29 @@ class QuranLibraryScreen extends StatelessWidget {
       QuranCtrl.instance.state.currentPageNumber.value = pageIndex + 1;
     }
     WordInfoCtrl.instance.isWordSelectionEnabled = enableWordSelection;
-    return PopScope(
+    // Wrap the whole tree in Obx so a Light → Dark → Sepia cycle on
+    // the floating pill triggers a full reader rebuild — the page
+    // background, text colour and font isDark variant all swap with
+    // the new palette. When useQuranHub is false, no Obx-read of
+    // state.quranTheme happens so the legacy chrome stays unchanged.
+    return Obx(() {
+      // Shadow the constructor params with locals so every read
+      // below resolves to the effective theme values instead of
+      // the original consumer-passed ones. `this.isDark` etc.
+      // explicitly reaches the field for the non-Hub path.
+      // ignore: unnecessary_this
+      final bool isDark = useQuranHub
+          ? QuranCtrl.instance.state.quranTheme.value.isDark
+          : this.isDark;
+      // ignore: unnecessary_this
+      final Color? backgroundColor = useQuranHub
+          ? QuranCtrl.instance.state.quranTheme.value.palette.pageBackground
+          : this.backgroundColor;
+      // ignore: unnecessary_this
+      final Color? textColor = useQuranHub
+          ? QuranCtrl.instance.state.quranTheme.value.palette.ink
+          : this.textColor;
+      return PopScope(
       onPopInvokedWithResult: (b, _) async {
         QuranCtrl.instance.state.isShowMenu.value = false;
       },
@@ -705,6 +727,7 @@ class QuranLibraryScreen extends StatelessWidget {
             )),
       ),
     );
+    });
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details, QuranCtrl quranCtrl) {
@@ -890,16 +913,33 @@ class _ControlWidget extends StatelessWidget {
                   alignment: Alignment.center,
                   children: [
                     // السلايدر السفلي - يظهر من الأسفل للأعلى
-                    // Bottom slider - appears from bottom to top
+                    // Bottom slider - appears from bottom to top.
+                    // useQuranHub overrides the default style with a
+                    // palette-driven version so the bar matches the
+                    // floating top pill (background, accent on the
+                    // play button, track colours).
                     isShowAudioSlider!
-                        ? AyahsAudioWidget(
-                            style: ayahStyle ??
+                        ? Builder(builder: (ctx) {
+                            AyahAudioStyle effective = ayahStyle ??
                                 AyahAudioStyle.defaults(
-                                    isDark: isDark, context: context),
-                            isDark: isDark,
-                            languageCode: languageCode,
-                            downloadManagerStyle: ayahDownloadManagerStyle,
-                          )
+                                    isDark: isDark, context: ctx);
+                            if (useQuranHub) {
+                              final palette = quranCtrl
+                                  .state.quranTheme.value.palette;
+                              effective = effective.copyWith(
+                                backgroundColor: palette.surface,
+                                seekBarActiveTrackColor: palette.accent,
+                                seekBarInactiveTrackColor: palette.divider,
+                                seekBarThumbColor: palette.accent,
+                              );
+                            }
+                            return AyahsAudioWidget(
+                              style: effective,
+                              isDark: isDark,
+                              languageCode: languageCode,
+                              downloadManagerStyle: ayahDownloadManagerStyle,
+                            );
+                          })
                         : const SizedBox.shrink(),
                     kIsWeb
                         ? JumpingPageControllerWidget(
