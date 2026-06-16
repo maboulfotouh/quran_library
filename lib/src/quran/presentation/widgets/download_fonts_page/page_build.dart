@@ -125,33 +125,42 @@ class PageBuild extends StatelessWidget {
                 return const SizedBox.shrink();
               }
 
-              return RepaintBoundary(
-                child: QpcV4RichTextLine(
-                  pageIndex: pageIndex,
-                  textColor: textColor,
-                  isDark: isDark,
-                  bookmarks: bookmarks,
-                  onAyahLongPress: onAyahLongPress,
-                  bookmarkList: bookmarkList,
-                  ayahIconColor: ayahIconColor,
-                  showAyahBookmarkedIcon: showAyahBookmarkedIcon,
-                  bookmarksAyahs: bookmarksAyahs,
-                  bookmarksColor: bookmarksColor,
-                                  customBookmarksColor: customBookmarksColor,
-                  ayahSelectedBackgroundColor: ayahSelectedBackgroundColor,
-                  context: context,
-                  quranCtrl: quranCtrl,
-                  segments: filteredSegments,
-                  isFontsLocal: isFontsLocal ?? false,
-                  fontsName: fontsName ?? '',
-                  fontFamilyOverride: null,
-                  fontPackageOverride: null,
-                  usePaintColoring: true,
-                  ayahBookmarked: ayahBookmarked,
-                  isAyahBookmarked: isAyahBookmarked,
-                  isCentered: b.isCentered,
-                  onPagePress: onPagePress,
-                ),
+              // [iqama fork] Per-line RepaintBoundary removed. With
+              // 15 lines per page × ~9 keep-alive pages, the prior
+              // setup spun up ~135 leaf layers — each one a paint
+              // layer the compositor has to track, allocate GPU
+              // memory for, and walk on every frame. For typical
+              // reading no single line changes in isolation (no
+              // partial-paint scenarios that would benefit from a
+              // per-line layer), so the boundaries cost without
+              // earning anything. The page-level RepaintBoundary in
+              // `_ItemBuilderWidget` still gives us the
+              // page-as-a-unit layer caching we actually rely on.
+              return QpcV4RichTextLine(
+                pageIndex: pageIndex,
+                textColor: textColor,
+                isDark: isDark,
+                bookmarks: bookmarks,
+                onAyahLongPress: onAyahLongPress,
+                bookmarkList: bookmarkList,
+                ayahIconColor: ayahIconColor,
+                showAyahBookmarkedIcon: showAyahBookmarkedIcon,
+                bookmarksAyahs: bookmarksAyahs,
+                bookmarksColor: bookmarksColor,
+                customBookmarksColor: customBookmarksColor,
+                ayahSelectedBackgroundColor: ayahSelectedBackgroundColor,
+                context: context,
+                quranCtrl: quranCtrl,
+                segments: filteredSegments,
+                isFontsLocal: isFontsLocal ?? false,
+                fontsName: fontsName ?? '',
+                fontFamilyOverride: null,
+                fontPackageOverride: null,
+                usePaintColoring: true,
+                ayahBookmarked: ayahBookmarked,
+                isAyahBookmarked: isAyahBookmarked,
+                isCentered: b.isCentered,
+                onPagePress: onPagePress,
               );
             }
 

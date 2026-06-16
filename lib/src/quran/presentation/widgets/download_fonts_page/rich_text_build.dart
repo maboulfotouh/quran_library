@@ -234,6 +234,128 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
     };
   }
 
+  /// [iqama fork] Collapses consecutive same-ayah segments on this
+  /// line into ONE `TextSpan` per ayah (with all the words' glyphs
+  /// concatenated). Drops a ~15-span line down to ~1 + an optional
+  /// ayah-number tail span. Only called when the caller has verified
+  /// it's safe — no per-word style overrides, no khilaf-red, no
+  /// `enableWordSelection`.
+  List<InlineSpan> _buildCombinedSpansForAyahs({
+    required BuildContext context,
+    required TextStyle pageBaseStyle,
+    required TextStyle pageAyahNumberStyle,
+    required Map<int, GestureRecognizer> ayahRecognizers,
+    required Set<int> ayahBookmarkedSet,
+    required Set<int> bookmarksSet,
+    required List<BookmarkModel> allBookmarksList,
+    required Map<int, TextSelection> ayahCharRanges,
+    required Map<int, _ColoredTextRange> bookmarkCharRanges,
+    required void Function(int) onCharOffset,
+    required int startCharOffset,
+  }) {
+    final out = <InlineSpan>[];
+    int charOffset = startCharOffset;
+    int i = 0;
+    final segs = widget.segments;
+    while (i < segs.length) {
+      final uq = segs[i].ayahUq;
+      final ayahStart = i;
+      final buffer = StringBuffer();
+      bool hasEnd = false;
+      int? endAyahNumber;
+      int endSegmentIndex = i;
+      while (i < segs.length && segs[i].ayahUq == uq) {
+        buffer.write(segs[i].glyphs);
+        if (segs[i].isAyahEnd) {
+          hasEnd = true;
+          endAyahNumber = segs[i].ayahNumber;
+          endSegmentIndex = i;
+        }
+        i++;
+      }
+
+      final combinedText = buffer.toString();
+      final spanStart = charOffset;
+      out.add(TextSpan(
+        text: combinedText,
+        style: pageBaseStyle,
+        recognizer: ayahRecognizers[uq],
+      ));
+      charOffset += combinedText.length;
+
+      // Track per-ayah character ranges for the selection / bookmark
+      // overlays. The whole concatenated ayah text is one contiguous
+      // run, so the range maths is trivial.
+      final isSelected =
+          widget.quranCtrl.selectedAyahsByUnequeNumber.contains(uq) ||
+              widget.quranCtrl.externallyHighlightedAyahs.contains(uq);
+      if (isSelected) {
+        ayahCharRanges[uq] = TextSelection(
+          baseOffset: spanStart,
+          extentOffset: charOffset,
+        );
+      }
+      final isBookmarked = widget.isAyahBookmarked != null
+          ? widget.isAyahBookmarked!(widget.quranCtrl.getAyahByUq(uq))
+          : (ayahBookmarkedSet.contains(uq) || bookmarksSet.contains(uq));
+      if (isBookmarked) {
+        final ayah = widget.quranCtrl.getAyahByUq(uq);
+        Color bmColor;
+        if (widget.customBookmarksColor != null) {
+          bmColor = widget.customBookmarksColor!(ayah) ??
+              widget.bookmarksColor ??
+              const Color(0xffCDAD80).withValues(alpha: 0.3);
+        } else if (widget.bookmarksColor != null) {
+          bmColor = widget.bookmarksColor!;
+        } else {
+          final bm = allBookmarksList.cast<BookmarkModel?>().firstWhere(
+                (b) => b!.ayahId == uq,
+                orElse: () => null,
+              );
+          bmColor = bm != null
+              ? Color(bm.colorCode).withValues(alpha: 0.3)
+              : const Color(0xffCDAD80).withValues(alpha: 0.3);
+        }
+        bookmarkCharRanges[uq] = _ColoredTextRange(
+          range: TextSelection(
+            baseOffset: spanStart,
+            extentOffset: charOffset,
+          ),
+          color: bmColor,
+        );
+      }
+
+      // Optional ayah-number tail (rendered only when the ayah ends
+      // on this line).
+      if (hasEnd && endAyahNumber != null) {
+        final usePaintColoring = widget.usePaintColoring;
+        final tailText = usePaintColoring
+            ? '${'$endAyahNumber'.convertEnglishNumbersToArabic(endAyahNumber.toString())}  '
+            : ' ${'$endAyahNumber'.convertEnglishNumbersToArabic(endAyahNumber.toString())} ';
+        out.add(TextSpan(
+          text: tailText,
+          style: pageAyahNumberStyle,
+          recognizer: LongPressGestureRecognizer(
+              duration: const Duration(milliseconds: 500))
+            ..onLongPressStart = _makeLongPressHandler(
+              uq: uq,
+              segmentIndex: endSegmentIndex,
+              context: context,
+              allBookmarksList: allBookmarksList,
+            ),
+        ));
+        charOffset += tailText.length;
+      }
+
+      // Unused but kept for symmetry with the per-segment path if it
+      // ever needs to read it back.
+      // ignore: unused_local_variable
+      final _ = ayahStart;
+    }
+    onCharOffset(charOffset);
+    return out;
+  }
+
   Widget _buildRichText(
     WordInfoCtrl wordInfoCtrl,
     BuildContext context,
@@ -309,8 +431,38 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
       }
     }
 
-    final spans =
-        List<InlineSpan>.generate(widget.segments.length, (segmentIndex) {
+    // [iqama fork] When word selection is disabled AND we're not in
+    // ten-readings (khilaf) mode AND there are no per-word style
+    // overrides in play, every word inside one ayah ends up with
+    // IDENTICAL TextSpan style + recognizer. We can collapse them
+    // into a single TextSpan per ayah with the words' glyphs
+    // concatenated, dropping a typical page's span count from ~250
+    // down to ~30. The Paragraph that Flutter eventually builds
+    // contains the same glyphs either way (so text-shaping cost is
+    // unchanged), but the InlineSpan tree we hand it is ~8× smaller
+    // — which directly cuts the cost of hit-testing, paint-command
+    // generation, and the per-mount widget allocations that show up
+    // as the residual "stuck" feeling on mid-end devices.
+    final canCombineSpans = !wordSelectionEnabled &&
+        !isTenRecitations &&
+        !widget.isFontsLocal &&
+        widget.fontFamilyOverride == null;
+
+    final spans = canCombineSpans
+        ? _buildCombinedSpansForAyahs(
+            context: context,
+            pageBaseStyle: pageBaseStyle,
+            pageAyahNumberStyle: pageAyahNumberStyle,
+            ayahRecognizers: ayahRecognizers,
+            ayahBookmarkedSet: ayahBookmarkedSet,
+            bookmarksSet: bookmarksSet,
+            allBookmarksList: allBookmarksList,
+            ayahCharRanges: ayahCharRanges,
+            bookmarkCharRanges: bookmarkCharRanges,
+            onCharOffset: (v) => charOffset = v,
+            startCharOffset: charOffset,
+          )
+        : List<InlineSpan>.generate(widget.segments.length, (segmentIndex) {
       final seg = widget.segments[segmentIndex];
       final uq = seg.ayahUq;
       final isSelectedCombined =
