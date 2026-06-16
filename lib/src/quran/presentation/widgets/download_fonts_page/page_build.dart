@@ -98,13 +98,33 @@ class _PageBuildState extends State<PageBuild> {
       _builtBlocks = -1;
       return;
     }
-    // Kick off the incremental build right after this page has had
-    // one frame to mount with the empty placeholder. addPostFrame
-    // (not `Priority.idle`) means we start ASAP, but the body of
-    // the loop polls the scroll velocity before promoting each
-    // block, so an active gesture still blocks any new work.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _runIncrementalBuild();
+      if (!mounted) return;
+      // [iqama fork — Q14 polish] If we're the currently-focused
+      // page AND there's no active scroll (i.e. cold-open path
+      // where the user has just arrived at their landing page and
+      // hasn't started swiping yet), render eagerly: one paint that
+      // shows the full page right away. The placeholder + line-by-
+      // line fill-in is the wrong UX here — the user opened the
+      // reader expecting to see content, not to watch it stream in.
+      //
+      // Pages mounted in the PageView's keep-alive cache (NOT
+      // focused) OR mounted mid-swipe (scroll active) still go
+      // through the incremental path. That way only the page the
+      // user is staring at pays the eager-render cost; off-screen
+      // cache pages don't all compete for the frame budget on
+      // open.
+      final scrollable = Scrollable.maybeOf(context);
+      final isScrolling = scrollable != null &&
+          Scrollable.recommendDeferredLoadingForContext(context);
+      final isFocused = widget.quranCtrl.state.currentPageNumber.value ==
+          widget.pageIndex + 1;
+      if (isFocused && !isScrolling) {
+        _pageBuildEverFullyRendered.add(widget.pageIndex);
+        setState(() => _builtBlocks = -1);
+        return;
+      }
+      _runIncrementalBuild();
     });
   }
 
@@ -121,30 +141,75 @@ class _PageBuildState extends State<PageBuild> {
   /// entirely; the moment the snap completes, the next block
   /// promotes.
   Future<void> _runIncrementalBuild() async {
-    final blocks = widget.quranCtrl
+    // [iqama fork — Q14 fix] Wait until the blocks for this page
+    // are actually populated before kicking off promotions.
+    //
+    // On a cold open the initial pages mount BEFORE Q5's eager
+    // prewarm has had time to fill `_qpcV4BlocksByPage`, so
+    // `getQpcLayoutBlocksForPageSync` returns the empty list
+    // sentinel — meanwhile triggering an async prewarm that
+    // eventually fires `update(['qpc_page_$pageIndex'])`.
+    // The previous version of this loop bailed on `total == 0`,
+    // which left `_builtBlocks` stuck at 0 forever: when the later
+    // `update` rebuilt PageBuild, the outer build saw non-empty
+    // blocks but `_builtBlocks == 0` still returned
+    // `SizedBox.expand()`. That's the "first pages blank" symptom.
+    //
+    // Poll instead. The check is O(1) (a Map lookup), so a handful
+    // of extra empty frames while we wait for prewarm cost
+    // essentially nothing; once blocks arrive the loop proceeds
+    // exactly as before.
+    List<QpcV4RenderBlock> blocks = widget.quranCtrl
         .getQpcLayoutBlocksForPageSync(widget.pageIndex + 1);
+    while (blocks.isEmpty) {
+      await SchedulerBinding.instance.endOfFrame;
+      if (!mounted) return;
+      blocks = widget.quranCtrl
+          .getQpcLayoutBlocksForPageSync(widget.pageIndex + 1);
+    }
     final total = blocks.length;
-    // Defensive: if blocks aren't ready yet (cache miss path), the
-    // outer build() will already be showing the spinner. Bail; a
-    // later GetBuilder update will rebuild and reset us.
-    if (total == 0) return;
 
     int next = _builtBlocks <= 0 ? 0 : _builtBlocks;
     while (next < total) {
       // Wait for the current frame to finish before we touch state.
       await SchedulerBinding.instance.endOfFrame;
       if (!mounted) return;
-      // Pause while a swipe / snap is fast — keep yielding until
-      // the scrollable settles. This is what makes the build
-      // truly preemptible: an in-flight swipe can never wait more
-      // than the *current* frame's chunk for the build to step
-      // aside.
-      while (Scrollable.maybeOf(context) != null &&
-          Scrollable.recommendDeferredLoadingForContext(context)) {
+      // [iqama fork — Q14 gates] Pause this page's incremental
+      // promotion while EITHER of:
+      //   • the user is mid-swipe (`recommendDeferredLoading`
+      //     returns true while velocity > kMinFlingVelocity);
+      //   • this page isn't currently the focused one (it's living
+      //     in the keep-alive cache).
+      //
+      // The visibility gate is important: without it, ~9
+      // off-screen cache pages all run their own per-frame
+      // promotion concurrently with the focused page, blowing the
+      // 16 ms frame budget many times over and reproducing exactly
+      // the lag we're trying to remove. With the gate, only the
+      // page you're looking at promotes; everyone else freezes
+      // wherever they are and resumes when you swipe to them.
+      while (mounted && (
+        widget.quranCtrl.state.currentPageNumber.value !=
+            widget.pageIndex + 1 ||
+        (Scrollable.maybeOf(context) != null &&
+            Scrollable.recommendDeferredLoadingForContext(context))
+      )) {
         await SchedulerBinding.instance.endOfFrame;
         if (!mounted) return;
       }
       next++;
+      // [iqama fork — Q14 batching] Surah headers and basmallah
+      // blocks are cheap (no RichText / text-shaping), so fold any
+      // that immediately follow this promotion into the same
+      // setState. Reduces the total promotion count from ~15 to
+      // ~12 on a typical page and stops the visible
+      // "header-appears-then-basmallah-appears-then-line-appears"
+      // stutter on a Surah-start page.
+      while (next < total &&
+          (blocks[next] is QpcV4SurahHeaderBlock ||
+              blocks[next] is QpcV4BasmallahBlock)) {
+        next++;
+      }
       setState(() => _builtBlocks = next);
     }
 
