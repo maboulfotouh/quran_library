@@ -1,6 +1,19 @@
 part of '/quran.dart';
 
-class PageBuild extends StatelessWidget {
+/// [iqama fork] Page-already-fully-rendered cache.
+///
+/// Once a page has fully rendered once during this isolate's lifetime,
+/// every subsequent mount skips the deferred-render placeholder and
+/// renders the full widget tree synchronously. This matters because
+/// `_KeepAlive` only protects pages that stay inside the PageView's
+/// cacheExtent — a page that drifts FAR out of cache (e.g. user
+/// jumps from page 5 to page 300) gets disposed, and when they come
+/// back the State would otherwise be fresh and force the placeholder
+/// again. Keying the "fully rendered" memory by pageIndex keeps the
+/// memo across that disposal.
+final Set<int> _pageBuildEverFullyRendered = <int>{};
+
+class PageBuild extends StatefulWidget {
   const PageBuild({
     super.key,
     required this.pageIndex,
@@ -58,7 +71,75 @@ class PageBuild extends StatelessWidget {
   final VoidCallback? onPagePress;
 
   @override
+  State<PageBuild> createState() => _PageBuildState();
+}
+
+class _PageBuildState extends State<PageBuild> {
+  /// [iqama fork] Whether this page's full widget tree should be
+  /// built right now. The whole point of this flag is to skip the
+  /// heavy `FittedBox + Column + 15 × QpcV4RichTextLine` mount cost
+  /// during the swipe gesture that brought us into view, and run it
+  /// only once the scheduler is genuinely idle (i.e. the swipe has
+  /// settled). See [initState] for the scheduling.
+  bool _fullyMounted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // If this pageIndex has already rendered fully in a previous
+    // mount this session, skip the placeholder entirely — re-mounting
+    // the same page after it scrolled FAR out of cache should not
+    // re-introduce the loading flash.
+    if (_pageBuildEverFullyRendered.contains(widget.pageIndex)) {
+      _fullyMounted = true;
+      return;
+    }
+    // Schedule the full build at `Priority.idle` (= 100, lower than
+    // `Priority.animation` = 150 and `Priority.touch` = 200). While
+    // the user is mid-swipe, every frame is animation/touch work, so
+    // this task waits. The instant the swipe settles and the
+    // scheduler runs out of higher-priority work, the task fires,
+    // we `setState`, and the page rebuilds with its real content.
+    //
+    // Net effect: the swipe gesture animates with a cheap
+    // `SizedBox.expand` placeholder; the expensive `FittedBox +
+    // Column + RichText` tree only enters the frame budget once the
+    // user has actually arrived. Subsequent visits to the same
+    // page short-circuit via the static `_pageBuildEverFullyRendered`
+    // set above.
+    SchedulerBinding.instance.scheduleTask<void>(() {
+      if (!mounted) return;
+      _pageBuildEverFullyRendered.add(widget.pageIndex);
+      setState(() => _fullyMounted = true);
+    }, Priority.idle);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final quranCtrl = widget.quranCtrl;
+    final pageIndex = widget.pageIndex;
+    final surahFilterNumber = widget.surahFilterNumber;
+    final bannerStyle = widget.bannerStyle;
+    final isDark = widget.isDark;
+    final surahNameStyle = widget.surahNameStyle;
+    final onSurahBannerPress = widget.onSurahBannerPress;
+    final basmalaStyle = widget.basmalaStyle;
+    final textColor = widget.textColor;
+    final bookmarks = widget.bookmarks;
+    final onAyahLongPress = widget.onAyahLongPress;
+    final bookmarkList = widget.bookmarkList;
+    final ayahIconColor = widget.ayahIconColor;
+    final showAyahBookmarkedIcon = widget.showAyahBookmarkedIcon;
+    final bookmarksAyahs = widget.bookmarksAyahs;
+    final bookmarksColor = widget.bookmarksColor;
+    final customBookmarksColor = widget.customBookmarksColor;
+    final ayahSelectedBackgroundColor = widget.ayahSelectedBackgroundColor;
+    final isFontsLocal = widget.isFontsLocal;
+    final fontsName = widget.fontsName;
+    final ayahBookmarked = widget.ayahBookmarked;
+    final isAyahBookmarked = widget.isAyahBookmarked;
+    final onPagePress = widget.onPagePress;
+
     if (!quranCtrl.isQpcLayoutEnabled) {
       return const SizedBox.shrink();
     }
@@ -78,6 +159,13 @@ class PageBuild extends StatelessWidget {
     final blocks = quranCtrl.getQpcLayoutBlocksForPageSync(pageNumber);
     if (blocks.isEmpty) {
       return const Center(child: CircularProgressIndicator.adaptive());
+    }
+
+    // [iqama fork] Deferred-render placeholder. Takes the full
+    // page slot so the PageView's layout doesn't see a collapsed
+    // child during the swipe; renders effectively for free.
+    if (!_fullyMounted) {
+      return const SizedBox.expand();
     }
 
     return RepaintBoundary(
