@@ -283,18 +283,87 @@ class _OnboardingCard extends StatelessWidget {
               height: 1.25,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            spec.body,
-            style: TextStyle(
-              fontSize: 14,
-              color: palette.subInk,
-              height: 1.55,
-              letterSpacing: -0.05,
+          if (spec.intro != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              spec.intro!,
+              style: TextStyle(
+                fontSize: 14,
+                color: palette.subInk,
+                height: 1.55,
+                letterSpacing: -0.05,
+              ),
             ),
-          ),
+          ],
+          if (spec.items != null) ...[
+            const SizedBox(height: 12),
+            for (final item in spec.items!) ...[
+              _OnboardingItemRow(item: item, palette: palette),
+              if (item != spec.items!.last) const SizedBox(height: 10),
+            ],
+          ],
+          if (spec.body != null) ...[
+            SizedBox(height: spec.items != null ? 12 : 8),
+            Text(
+              spec.body!,
+              style: TextStyle(
+                fontSize: 14,
+                color: palette.subInk,
+                height: 1.55,
+                letterSpacing: -0.05,
+              ),
+            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// A single icon + description row inside an onboarding card's
+/// bullet list. The icon is rendered in a faint accent-tinted
+/// circle so it reads visually as a chip the user can match to
+/// the real chrome control once the tour closes.
+class _OnboardingItemRow extends StatelessWidget {
+  final _OnboardingItem item;
+  final QuranThemePalette palette;
+
+  const _OnboardingItemRow({required this.item, required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(
+                palette.accent.withValues(alpha: 0.10),
+                palette.surface),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: palette.divider),
+          ),
+          alignment: Alignment.center,
+          child: Icon(item.icon, size: 18, color: palette.accent),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              item.text,
+              style: TextStyle(
+                fontSize: 14,
+                color: palette.subInk,
+                height: 1.5,
+                letterSpacing: -0.05,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -424,56 +493,166 @@ class _Footer extends StatelessWidget {
 /// One card in the tour. Illustrations are drawn from inline
 /// widgets — no asset dependency — so the package stays small
 /// and the illustration colours pick up the active palette.
+///
+/// A card can render any combination of:
+///   • [intro] — a short paragraph below the title (e.g. the "the
+///     top bar has these tools" lead-in for the toolbar card).
+///   • [items] — a bullet list with a real icon on the left + a
+///     short description on the right. The icons are the same
+///     instances the reader chrome uses, so the user can match
+///     them visually as soon as they close the tour.
+///   • [body] — a closing paragraph for cards that don't need a
+///     bullet list (welcome + mark-this-page).
+///
+/// Any of the three is optional — the rendering walks them in
+/// order and skips nulls.
 class _OnboardingCardSpec {
   final String title;
-  final String body;
+  final String? intro;
+  final List<_OnboardingItem>? items;
+  final String? body;
   final Widget Function(QuranThemePalette palette) illustration;
 
   const _OnboardingCardSpec({
     required this.title,
-    required this.body,
+    this.intro,
+    this.items,
+    this.body,
     required this.illustration,
   });
+}
+
+class _OnboardingItem {
+  final IconData icon;
+  final String text;
+  const _OnboardingItem({required this.icon, required this.text});
 }
 
 List<_OnboardingCardSpec> _buildSpecs(String languageCode) {
   final isAr = languageCode == 'ar';
   return [
+    // ── 1. Welcome ───────────────────────────────────────────────────
     _OnboardingCardSpec(
       title: isAr ? 'مرحبًا في مصحفك' : 'Welcome to your Mushaf',
       body: isAr
-          ? 'تمت تهيئة المصحف. خذ جولة قصيرة لاكتشاف الأدوات الجديدة والقراءة براحة أكبر.'
-          : 'Your Mushaf is ready. Take a quick tour to discover the new tools and read in the way that suits you.',
+        ? 'أثناء تهيئة المصحف. يمكنك أخذ جولة قصيرة للتعرّف على طريقة استخدامه وأدواته، لتقرأ براحة أكبر.'
+        : 'The Mushaf is being prepared. You can take a quick tour to learn how to use it and its tools, so you can read more comfortably.',
       illustration: _WelcomeIllustration.new,
     ),
+
+    // ── 2. Top bar — icon list (theme cycle + tajweed + Hub teaser) ──
     _OnboardingCardSpec(
-      title:
-          isAr ? 'تبديل الوضع وألوان التجويد' : 'Theme cycle + tajweed toggle',
-      body: isAr
-          ? 'من الشريط العلوي اضغط على أيقونة الإضاءة لتبديل الفاتح والداكن والبُني، وعلى الفرشاة لتشغيل أو إيقاف ألوان التجويد.'
-          : 'Tap the brightness icon in the top bar to cycle Light → Dark → Sepia. The brush icon turns tajweed colouring on or off.',
+      title: isAr ? 'شريط المهام' : 'The top bar',
+      intro: isAr
+          ? 'في أعلى الصفحة يوجد شريط صغير يجمع أكثر الأدوات استخدامًا. هذه أيقوناته:'
+          : 'A small bar sits at the top of every page with the tools you use most. Here is what each icon does:',
+      items: [
+        _OnboardingItem(
+          icon: Icons.light_mode_rounded,
+          text: isAr
+              ? 'تبديل المظهر: فاتح → داكن → بُني. اضغط مرة لتنتقل إلى المظهر التالي، وستذكر اختيارك في كل فتحة قادمة.'
+              : 'Theme cycle: Light → Dark → Sepia. Tap once to move to the next mode; your choice is remembered next time.',
+        ),
+        _OnboardingItem(
+          icon: Icons.brush_rounded,
+          text: isAr
+              ? 'تشغيل أو إيقاف ألوان التجويد على نص المصحف من نفس مكان القراءة.'
+              : 'Turn the tajweed colouring on or off without leaving the page.',
+        ),
+        _OnboardingItem(
+          icon: Icons.tune_rounded,
+          text: isAr
+              ? 'الإعدادات: تفتح نافذة تجمع كل الأدوات (السور، الفواصل، البحث، التحميلات، الخيارات). تفاصيلها في الصفحة التالية.'
+              : 'Settings: opens the Hub — surahs, bookmarks, search, downloads, options. The next slide breaks each one down.',
+        ),
+      ],
       illustration: _TopBarIllustration.new,
     ),
+
+    // ── 3. Settings sheet (Hub) — bullet per tab ──────────────────────
     _OnboardingCardSpec(
-      title: isAr ? 'كل الأدوات في مكان واحد' : 'Every tool in one place',
-      body: isAr
-          ? 'اضغط على زر الإعدادات (الترس) لفتح نافذة تجمع فهرس السور، الفواصل، البحث، التحميلات، والإعدادات.'
-          : 'Tap the gear icon to open the Hub — a single sheet that brings together the surah index, bookmarks, search, downloads, and reader settings.',
+      title: isAr ? 'الإعدادات: كل الأدوات في مكان واحد' : 'Inside the settings sheet',
+      intro: isAr
+          ? 'حين تضغط على أيقونة الإعدادات تفتح نافذة بخمسة أقسام:'
+          : 'Tapping the settings icon opens a sheet with five sections:',
+      items: [
+        _OnboardingItem(
+          icon: Icons.menu_book_rounded,
+          text: isAr
+              ? 'السور: قائمة الـ 114 سورة مرتّبة. اضغط على أي اسم لتنتقل مباشرة إلى أول صفحة فيها.'
+              : 'Surahs: the full 114-surah list. Tap a surah to jump straight to its first page.',
+        ),
+        _OnboardingItem(
+          icon: Icons.bookmark_rounded,
+          text: isAr
+              ? 'الفواصل: كل الآيات التي حفظتها بألوان مختلفة، يمكنك العودة لأي منها بضغطة، أو حذفها.'
+              : 'Bookmarks: every ayah you have saved (with its colour). Tap one to jump back to it, or remove it.',
+        ),
+        _OnboardingItem(
+          icon: Icons.search_rounded,
+          text: isAr
+              ? 'البحث: ابحث عن كلمة أو جزء من آية وستظهر النتائج مع موقعها في المصحف.'
+              : 'Search: find a word or part of an ayah; matches show with their surah + page.',
+        ),
+        _OnboardingItem(
+          icon: Icons.download_rounded,
+          text: isAr
+              ? 'التحميلات: تحكّم في تنزيل تلاوات القرّاء واستماعها لاحقًا بدون إنترنت.'
+              : 'Downloads: pick reciters to download for offline listening.',
+        ),
+        _OnboardingItem(
+          icon: Icons.tune_rounded,
+          text: isAr
+              ? 'الخيارات: المظهر، التجويد، حجم الخط، وغيرها من إعدادات القراءة في مكان واحد.'
+              : 'Options: theme, tajweed, font size and the other reader-wide preferences in one place.',
+        ),
+      ],
       illustration: _HubIllustration.new,
     ),
+
+    // ── 4. Long-press an ayah — bullet per action ─────────────────────
     _OnboardingCardSpec(
-      title: isAr ? 'اضغط على آية لخياراتها' : 'Tap an ayah for actions',
-      body: isAr
-          ? 'الضغط على أي آية يفتح قائمة سريعة لتشغيل التلاوة، عرض التفسير، إضافة فاصل ملوّن، أو نسخ النص.'
-          : 'Tap any ayah on the page to open a quick menu for Play, Tafsir, Bookmark, or Copy. Tafsir and bookmarks live right inside the sheet.',
+      title:
+          isAr ? 'اضغط على الآية مطوّلًا للمزيد' : 'Long-press an ayah for more',
+      intro: isAr
+          ? 'الضغط المطوّل على أي آية يفتح قائمة سريعة بأربعة خيارات:'
+          : 'Long-pressing any ayah opens a quick menu with four actions:',
+      items: [
+        _OnboardingItem(
+          icon: Icons.play_arrow_rounded,
+          text: isAr
+              ? 'استماع: تشغيل تلاوة الآية بصوت القارئ الذي اخترته.'
+              : 'Play: hear the ayah recited by your selected reciter.',
+        ),
+        _OnboardingItem(
+          icon: Icons.menu_book_rounded,
+          text: isAr
+              ? 'التفسير: عرض تفسير الآية في النافذة نفسها بدون مغادرة الصفحة.'
+              : 'Tafsir: read the ayah\'s tafsir right inside the sheet — no page change.',
+        ),
+        _OnboardingItem(
+          icon: Icons.bookmark_add_rounded,
+          text: isAr
+              ? 'فاصل ملوّن: احفظ الآية بلون مختار من ستة ألوان للرجوع إليها لاحقًا.'
+              : 'Bookmark: save the ayah with one of six colours so you can come back to it later.',
+        ),
+        _OnboardingItem(
+          icon: Icons.copy_rounded,
+          text: isAr
+              ? 'نسخ: انسخ نص الآية إلى الحافظة لتشاركها أو تحفظها.'
+              : 'Copy: copy the ayah text to the clipboard for sharing or saving.',
+        ),
+      ],
       illustration: _AyahMenuIllustration.new,
     ),
+
+    // ── 5. Mark each finished page — pill is at the TOP, not bottom ──
     _OnboardingCardSpec(
       title:
           isAr ? 'تتبّع قراءتك اليومية' : 'Mark each page you finish',
       body: isAr
-          ? 'بأسفل كل صفحة زر صغير. اضغطه عند انتهائك من الصفحة لتضاف نقطة إلى رصيدك اليومي ولتحفظ تقدّمك.'
-          : 'A small pill sits at the foot of every page. Tap it once you finish reading the page to add a point to your daily score and save your progress.',
+          ? 'بأعلى كل صفحة زر صغير. اضغطه عند انتهائك من قراءة الصفحة لتضاف نقطة إلى رصيدك اليومي ويُحفظ تقدّمك.'
+          : 'A small pill sits at the top of every page. Tap it after you finish reading the page to add a point to your daily score and save your progress.',
       illustration: _MarkPageIllustration.new,
     ),
   ];
