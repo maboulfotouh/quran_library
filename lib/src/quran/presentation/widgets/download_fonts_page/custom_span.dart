@@ -41,6 +41,15 @@ TextSpan _qpcV4SpanSegment({
   TextStyle? precomputedAyahNumberStyle,
   bool? precomputedWithTajweed,
   bool? precomputedIsTenRecitations,
+  // [iqama fork] Optional shared recognizer for ALL the words of a
+  // single ayah. Word selection mode needs per-word recognizers
+  // (each one's `setSelectedWord(wordRef)` differs), so this is
+  // only honoured when word selection is disabled. When honoured,
+  // the per-word `TapLongPressRecognizer` allocation goes away —
+  // a typical Mushaf page drops from ~250 recognizers down to ~30
+  // (one per ayah), which is a massive reduction in gesture-arena
+  // pressure during swipes on a mid-range tablet.
+  GestureRecognizer? sharedAyahRecognizer,
 }) {
   final quranCtrl = QuranCtrl.instance;
   final wordInfoCtrl = WordInfoCtrl.instance;
@@ -129,19 +138,28 @@ TextSpan _qpcV4SpanSegment({
 
   final GestureRecognizer recognizer;
   if (!wordInfoCtrl.isWordSelectionEnabled) {
-    // تحديد الكلمة معطّل: الضغط القصير لا يفعل شيئاً، الضغط المطوّل يفتح قائمة الآية
-    recognizer = TapLongPressRecognizer(
-      shortHoldDuration: const Duration(milliseconds: 150),
-      longHoldDuration: const Duration(milliseconds: 500),
-    )
-      ..onQuickTapCallback = onPagePress
-      ..onShortHoldStartCallback = () {
-        // فارغ عمداً — لإبقاء الحدث حياً حتى يصل للضغط المطوّل
-      }
-      ..onShortHoldCompleteCallback = null
-      ..onLongHoldStartCallback = (details) {
-        onLongPressStart?.call(details);
-      };
+    // [iqama fork] If the caller already built one recognizer for
+    // the whole ayah, reuse it across every word — saves the
+    // per-word TapLongPressRecognizer allocation AND keeps the
+    // gesture arena from tracking 250 listeners per page on
+    // mid-range tablets.
+    if (sharedAyahRecognizer != null) {
+      recognizer = sharedAyahRecognizer;
+    } else {
+      // تحديد الكلمة معطّل: الضغط القصير لا يفعل شيئاً، الضغط المطوّل يفتح قائمة الآية
+      recognizer = TapLongPressRecognizer(
+        shortHoldDuration: const Duration(milliseconds: 150),
+        longHoldDuration: const Duration(milliseconds: 500),
+      )
+        ..onQuickTapCallback = onPagePress
+        ..onShortHoldStartCallback = () {
+          // فارغ عمداً — لإبقاء الحدث حياً حتى يصل للضغط المطوّل
+        }
+        ..onShortHoldCompleteCallback = null
+        ..onLongHoldStartCallback = (details) {
+          onLongPressStart?.call(details);
+        };
+    }
   } else {
     recognizer = TapLongPressRecognizer(
       shortHoldDuration: const Duration(milliseconds: 150),

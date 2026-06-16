@@ -179,6 +179,61 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
     );
   }
 
+  /// [iqama fork] Builds the long-press handler for an ayah. Used
+  /// both by the inline per-segment closure (word-selection mode)
+  /// and by the per-ayah shared recognizer (no-word-selection mode)
+  /// — having a single source of truth keeps the two paths from
+  /// drifting and lets the shared recognizer reuse exactly the same
+  /// handler closure across every word of the ayah it represents.
+  void Function(LongPressStartDetails) _makeLongPressHandler({
+    required int uq,
+    required int segmentIndex,
+    required BuildContext context,
+    required List<BookmarkModel> allBookmarksList,
+  }) {
+    return (details) {
+      final ayahModel = widget.quranCtrl.getAyahByUq(uq);
+      if (widget.onAyahLongPress != null) {
+        widget.onAyahLongPress!(details, ayahModel);
+        widget.quranCtrl.toggleAyahSelection(uq);
+        widget.quranCtrl.state.isShowMenu.value = false;
+        return;
+      }
+
+      int? bookmarkId;
+      for (final b in allBookmarksList) {
+        if (b.ayahId == uq) {
+          bookmarkId = b.id;
+          break;
+        }
+      }
+
+      if (bookmarkId != null) {
+        BookmarksCtrl.instance.removeBookmark(bookmarkId);
+        return;
+      }
+
+      if (widget.quranCtrl.isMultiSelectMode.value) {
+        widget.quranCtrl.toggleAyahSelectionMulti(uq);
+      } else {
+        widget.quranCtrl.toggleAyahSelection(uq);
+      }
+      widget.quranCtrl.state.isShowMenu.value = false;
+
+      if (!context.mounted) return;
+      final themedTafsirStyle = TafsirTheme.of(context)?.style;
+      showAyahMenuDialog(
+        context: context,
+        isDark: widget.isDark,
+        ayah: ayahModel,
+        position: details.globalPosition,
+        index: segmentIndex,
+        pageIndex: widget.pageIndex,
+        externalTafsirStyle: themedTafsirStyle,
+      );
+    };
+  }
+
   Widget _buildRichText(
     WordInfoCtrl wordInfoCtrl,
     BuildContext context,
@@ -225,6 +280,35 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
       color: widget.ayahIconColor ?? Theme.of(context).colorScheme.primary,
     );
 
+    // [iqama fork] When word selection is disabled, all words within
+    // a single ayah share identical recognizer behaviour (quick tap
+    // → onPagePress, long press → onAyahLongPress with the ayah's
+    // model). Pre-build ONE TapLongPressRecognizer per ayah present
+    // on this line and share it across every word span of that
+    // ayah. Drops recognizer count for a typical Mushaf line from
+    // ~15 down to ~1; for a full page from ~250 down to ~30. That's
+    // ~220 fewer participants in the gesture arena tracking every
+    // pointer event during a swipe.
+    final wordSelectionEnabled = wordInfoCtrl.isWordSelectionEnabled;
+    final ayahRecognizers = <int, GestureRecognizer>{};
+    if (!wordSelectionEnabled) {
+      for (var i = 0; i < widget.segments.length; i++) {
+        final segUq = widget.segments[i].ayahUq;
+        if (ayahRecognizers.containsKey(segUq)) continue;
+        ayahRecognizers[segUq] = (TapLongPressRecognizer(
+          shortHoldDuration: const Duration(milliseconds: 150),
+          longHoldDuration: const Duration(milliseconds: 500),
+        )
+          ..onQuickTapCallback = widget.onPagePress
+          ..onLongHoldStartCallback = _makeLongPressHandler(
+            uq: segUq,
+            segmentIndex: i,
+            context: context,
+            allBookmarksList: allBookmarksList,
+          ));
+      }
+    }
+
     final spans =
         List<InlineSpan>.generate(widget.segments.length, (segmentIndex) {
       final seg = widget.segments[segmentIndex];
@@ -254,48 +338,12 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
         showAyahNumber: seg.isAyahEnd,
         wordRef: ref,
         isWordKhilaf: hasKhilaf,
-        onLongPressStart: (details) {
-          final ayahModel = widget.quranCtrl.getAyahByUq(uq);
-
-          if (widget.onAyahLongPress != null) {
-            widget.onAyahLongPress!(details, ayahModel);
-            widget.quranCtrl.toggleAyahSelection(uq);
-            widget.quranCtrl.state.isShowMenu.value = false;
-            return;
-          }
-
-          int? bookmarkId;
-          for (final b in allBookmarksList) {
-            if (b.ayahId == uq) {
-              bookmarkId = b.id;
-              break;
-            }
-          }
-
-          if (bookmarkId != null) {
-            BookmarksCtrl.instance.removeBookmark(bookmarkId);
-            return;
-          }
-
-          if (widget.quranCtrl.isMultiSelectMode.value) {
-            widget.quranCtrl.toggleAyahSelectionMulti(uq);
-          } else {
-            widget.quranCtrl.toggleAyahSelection(uq);
-          }
-          widget.quranCtrl.state.isShowMenu.value = false;
-
-          if (!context.mounted) return;
-          final themedTafsirStyle = TafsirTheme.of(context)?.style;
-          showAyahMenuDialog(
-            context: context,
-            isDark: widget.isDark,
-            ayah: ayahModel,
-            position: details.globalPosition,
-            index: segmentIndex,
-            pageIndex: widget.pageIndex,
-            externalTafsirStyle: themedTafsirStyle,
-          );
-        },
+        onLongPressStart: _makeLongPressHandler(
+          uq: uq,
+          segmentIndex: segmentIndex,
+          context: context,
+          allBookmarksList: allBookmarksList,
+        ),
         textColor: pageTextColor,
         ayahIconColor: widget.ayahIconColor,
         allBookmarksList: allBookmarksList,
@@ -318,6 +366,8 @@ class _QpcV4RichTextLineState extends State<QpcV4RichTextLine> {
         precomputedAyahNumberStyle: pageAyahNumberStyle,
         precomputedWithTajweed: withTajweed,
         precomputedIsTenRecitations: isTenRecitations,
+        sharedAyahRecognizer:
+            wordSelectionEnabled ? null : ayahRecognizers[uq],
       );
 
       final spanStart = charOffset;
