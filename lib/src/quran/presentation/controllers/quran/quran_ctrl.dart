@@ -537,7 +537,6 @@ class QuranCtrl extends GetxController {
     if (renderer == null) return;
 
     final basePage = pageIndex + 1;
-    final currentPage = state.currentPageNumber.value;
     // Walk the window in proximity order so the nearest forward
     // neighbour is built FIRST — the most likely next-swipe target
     // gets blocks the soonest even if the user starts swiping
@@ -563,11 +562,16 @@ class QuranCtrl extends GetxController {
     }
 
     if (built.isEmpty) return;
-    final notifyIds = <String>[
-      for (final p in built)
-        if (p != currentPage) 'qpc_page_${p - 1}',
-    ];
-    if (notifyIds.isNotEmpty) update(notifyIds);
+    // [iqama fork] Notify EVERY page whose blocks we just built —
+    // including the currently-visible one. An earlier revision
+    // excluded the current page on the assumption it was already
+    // showing correct content; but when a cache miss hit the
+    // current page in the first place, its PageBuild was showing
+    // the `CircularProgressIndicator` placeholder and needed the
+    // notify to swap to real content. For pages that aren't in
+    // the keep-alive window yet, the GetBuilder with that id
+    // doesn't exist so the update is a cheap no-op.
+    update([for (final p in built) 'qpc_page_${p - 1}']);
   }
 
   /// [iqama fork] Debounced entry point for the on-swipe prewarm

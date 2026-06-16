@@ -35,18 +35,27 @@ extension FontsExtension on QuranCtrl {
   /// For derived variants: returns the variant if registered, else
   /// kicks off ensureVariant in the background and returns primary
   /// as a temporary fallback.
+  ///
+  /// [iqama fork] When the variant lands we update ONLY the specific
+  /// page's GetBuilder (`qpc_page_$pageIndex`) — the previous
+  /// `update(['_pageViewBuild'])` rebuilt every PageViewBuild in
+  /// the PageView's keep-alive window (~9 pages with preloadPagesCount=4).
+  /// With `fontsRevision` in the rich-text-line fingerprint, each
+  /// of those 9 page rebuilds invalidated 15 line caches → ~135
+  /// line builds per variant registration, and ~2700 per
+  /// prewarm pass — easily a second of main-thread cost while the
+  /// user was trying to swipe. The targeted update touches only
+  /// the page whose variant just registered; other pages re-resolve
+  /// their family naturally on their own next build.
   String _resolveFamily(int pageIndex, FontVariant? variant) {
     final page = pageIndex + 1;
     if (variant == null) return QuranFontsService.getFontFamily(pageIndex);
     final family = variant.familyFor(page);
     if (QuranFontsService.isFamilyReady(family)) return family;
-    // Kick off the lazy variant generation and rebuild the reader
-    // once it lands. `update(['fonts'])` is the same channel the
-    // package already uses for font-related repaints.
     QuranFontsService.ensureVariant(page, variant).then((_) {
       try {
         // ignore: invalid_use_of_protected_member
-        update(['fonts', '_pageViewBuild']);
+        update(['qpc_page_$pageIndex']);
       } catch (_) {/* controller may have been disposed */}
     });
     return QuranFontsService.getFontFamily(pageIndex);
