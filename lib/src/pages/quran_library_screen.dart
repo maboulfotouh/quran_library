@@ -861,35 +861,18 @@ class QuranLibraryScreen extends StatelessWidget {
         quranCtrl.scheduleQpcV4AllPagesPrebuild();
       }
 
-      // [iqama fork] Pre-warm the next pages' QPC layout blocks so
-      // the FIRST forward swipe onto them lands on already-built
-      // blocks instead of triggering the cache-miss → spinner →
-      // reactive prewarm cycle. Without this, every "new" page felt
-      // laggy on a mid-end device because PageBuild had to short-
-      // circuit to a CircularProgressIndicator while the layout was
-      // generated, then rebuild once the data arrived.
-      //
-      // Backward swipes always felt smooth because the previously-
-      // visited pages stayed cached in `_qpcV4BlocksByPage` AND in
-      // the PageView's `_KeepAlive` widget cache — only the first
-      // visit to each new page paid the build cost.
-      //
-      // Forward-biased radius (+5/-1) mirrors how the Mushaf is
-      // actually read. Detached future + chunked yields inside the
-      // controller keep the wider window from stalling the gesture
-      // pipeline.
-      Future(() => quranCtrl.prewarmQpcV4Pages(pageIndex));
-
-      // [iqama fork] Pre-warm the new page's font-variant
-      // neighbourhood so the renderer never has to fall back to the
-      // primary family on a subsequent swipe. Without this the
-      // pre-warm only runs once for the LANDING page (in onInit) —
-      // anything 3+ pages away from the cold-start position would
-      // render with the primary (tajweed-coloured) variant for the
-      // few hundred ms `ensureVariant` took, even when tajweed was
-      // toggled off. Detached future + idempotent inside the service,
-      // so duplicate triggers are cheap.
-      Future(() => QuranFontsService.prewarmPageNeighbourhood(pageIndex));
+      // [iqama fork] Schedule a single debounced prewarm pass for
+      // QPC layout blocks AND font variants in one go. The
+      // debouncer waits 250 ms after the LAST page-change before
+      // doing any work, so a multi-page fast-swipe doesn't fire
+      // overlapping prewarm cascades that would otherwise compete
+      // with the swipe animation for main-thread time (and starve
+      // the platform thread with parallel `loadFontFromList`
+      // calls). The work itself runs at `Priority.idle` so it can
+      // never out-prioritise a pending gesture frame, and carries a
+      // generation-token cancel so any prewarm still in-flight when
+      // the user starts swiping again bails on its next yield.
+      quranCtrl.schedulePrewarmDebounced(pageIndex);
     });
   }
 }

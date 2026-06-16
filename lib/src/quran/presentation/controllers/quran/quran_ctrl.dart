@@ -21,6 +21,25 @@ class QuranCtrl extends GetxController {
   bool _qpcV4PrebuildStarted = false;
   Timer? _qpcV4IdlePrebuildTimer;
 
+  // [iqama fork] Debounce timer + cancel-token for the on-swipe
+  // prewarm path. `onPageChanged` can fire several times for a
+  // single multi-page swipe (every time the rounded page index
+  // crosses), so without a debounce each crossing kicked off a fresh
+  // `prewarmQpcV4Pages` + `prewarmPageNeighbourhood` pair — and
+  // those cascade `loadFontFromList` platform-channel calls that
+  // briefly block the platform thread. Twenty of those in-flight
+  // while the user's finger is still on the screen was the
+  // half-second mid-swipe stall users reported on tablets.
+  //
+  // We now debounce the prewarm by 250 ms, so it only fires after
+  // the user actually settles on a page. The cancel-token is bumped
+  // on every page change; any prewarm that is mid-loop checks it
+  // between page builds and bails out, so even if the debounce
+  // window expires under heavy fingering we never spend more than
+  // one page worth of work on stale prewarm targets.
+  Timer? _prewarmDebounce;
+  int _prewarmGeneration = 0;
+
   bool get isQpcV4AllPagesPrebuilt => _qpcV4BlocksByPage.length >= 604;
 
   double get qpcV4PrebuildProgress {
@@ -509,9 +528,11 @@ class QuranCtrl extends GetxController {
     int pageIndex, {
     int forwardRadius = 5,
     int backwardRadius = 1,
+    bool Function()? cancelToken,
   }) async {
     if (!isQpcV4Enabled) return;
     await _ensureQpcV4AssetsLoaded();
+    if (cancelToken != null && cancelToken()) return;
     final renderer = _qpcV4PageRenderer;
     if (renderer == null) return;
 
@@ -530,6 +551,7 @@ class QuranCtrl extends GetxController {
 
     final built = <int>[];
     for (final p in ordered) {
+      if (cancelToken != null && cancelToken()) break;
       if (p < 1 || p > 604) continue;
       if (_qpcV4BlocksByPage.containsKey(p)) continue;
       _qpcV4BlocksByPage[p] = renderer.buildPage(pageNumber: p);
@@ -546,6 +568,33 @@ class QuranCtrl extends GetxController {
         if (p != currentPage) 'qpc_page_${p - 1}',
     ];
     if (notifyIds.isNotEmpty) update(notifyIds);
+  }
+
+  /// [iqama fork] Debounced entry point for the on-swipe prewarm
+  /// path. Cancels any in-flight prewarm timer, bumps the
+  /// generation token (so any running prewarm that hasn't completed
+  /// will exit early on its next yield), and schedules a single
+  /// fresh prewarm 250 ms after the LAST page-change. The prewarm
+  /// itself runs at `Priority.idle` so it never out-prioritises a
+  /// pending gesture or animation frame.
+  void schedulePrewarmDebounced(int pageIndex) {
+    _prewarmDebounce?.cancel();
+    final myGeneration = ++_prewarmGeneration;
+    _prewarmDebounce = Timer(const Duration(milliseconds: 250), () {
+      // If a newer page change has fired since we were scheduled,
+      // bail — the newer call will have queued its own prewarm.
+      if (myGeneration != _prewarmGeneration) return;
+      SchedulerBinding.instance.scheduleTask<void>(() async {
+        if (myGeneration != _prewarmGeneration) return;
+        await prewarmQpcV4Pages(pageIndex, cancelToken: () =>
+            myGeneration != _prewarmGeneration);
+        if (myGeneration != _prewarmGeneration) return;
+        await QuranFontsService.prewarmPageNeighbourhood(
+          pageIndex,
+          cancelToken: () => myGeneration != _prewarmGeneration,
+        );
+      }, Priority.idle);
+    });
   }
 
   void junpTolastPage() {

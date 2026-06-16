@@ -517,21 +517,48 @@ class QuranFontsService {
   /// guards via `_registeredFamilies` and `_variantLoadFutures`
   /// — repeated calls to this method are cheap once the data is
   /// already in memory.
+  ///
+  /// **Serial, not parallel.** Each `ensureVariant` that has to do
+  /// real work calls `loadFontFromList`, which briefly blocks the
+  /// platform thread while it installs the font. The original
+  /// `Future.wait([…])` fanned out ~20 of those in flight at once
+  /// during a single page-change — enough to starve Flutter's
+  /// compositor for half a second and produce the mid-swipe stall
+  /// users reported on tablets. The serial loop, combined with a
+  /// `Future.delayed(Duration.zero)` yield after each variant, lets
+  /// the platform thread service a compositor frame between every
+  /// font registration. Total wall-clock is slightly longer, but
+  /// the swipe animation no longer drops to 0 fps mid-gesture.
+  ///
+  /// Optional [cancelToken] is polled between variants; returning
+  /// `true` aborts the rest of the work. The caller (the debounced
+  /// scheduler in `QuranCtrl.schedulePrewarmDebounced`) bumps its
+  /// generation token on every new page-change so a prewarm that
+  /// is still walking the window when the user starts swiping
+  /// again bails on the very next yield instead of fighting the
+  /// new gesture.
   static Future<void> prewarmPageNeighbourhood(
     int pageIndex, {
     int radius = 2,
+    bool Function()? cancelToken,
   }) async {
     for (int offset = 0; offset <= radius; offset++) {
+      if (cancelToken != null && cancelToken()) return;
       final pages = offset == 0
           ? [pageIndex]
           : [pageIndex - offset, pageIndex + offset];
-      // Variants for this layer in parallel — they share work via
-      // _variantLoadFutures so concurrent calls coalesce.
-      await Future.wait([
-        for (final p in pages)
-          if (p >= 0 && p <= 603)
-            for (final v in FontVariant.values) ensureVariant(p + 1, v),
-      ]);
+      for (final p in pages) {
+        if (p < 0 || p > 603) continue;
+        for (final v in FontVariant.values) {
+          if (cancelToken != null && cancelToken()) return;
+          await ensureVariant(p + 1, v);
+          // Yield so the platform thread can paint a compositor
+          // frame between every registered font. Without this the
+          // swipe animation flatlines while ~20 loadFontFromList
+          // calls chew the platform thread back-to-back.
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
     }
   }
 
